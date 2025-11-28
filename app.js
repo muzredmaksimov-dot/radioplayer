@@ -4,39 +4,60 @@ const playBtn = document.getElementById('playBtn');
 const playIcon = document.getElementById('playIcon');
 const visualizer = document.getElementById('visualizer');
 
-// Поток радио МИР
+// Поток радио МИР - УБЕДИТЕСЬ ЧТО URL РАБОЧИЙ
 const STREAM_URL = 'https://media1.datacenter.by-1936/radiomir/radiomir/playlist.m3u8';
 
-let hls;
+let hls = null;
 let isPlaying = false;
 let currentMetadata = {};
 let lastMetadata = '';
 let trackHistory = [];
 let progressInterval;
+let isHlsInitialized = false;
 
 // Инициализация Telegram Web App
 tg.expand();
 tg.enableClosingConfirmation();
 
 function initHLS() {
+    console.log('Инициализация HLS...');
+    
+    // Если HLS уже инициализирован, уничтожаем старый экземпляр
+    if (hls) {
+        hls.destroy();
+        hls = null;
+    }
+    
     if (Hls.isSupported()) {
         hls = new Hls({
             enableWorker: false,
             lowLatencyMode: true,
             backBufferLength: 90,
-            debug: false
+            debug: true, // Включаем debug для диагностики
+            autoStartLoad: false,
+            maxBufferLength: 30
         });
         
         hls.loadSource(STREAM_URL);
         hls.attachMedia(audio);
         
         hls.on(Hls.Events.MANIFEST_PARSED, function() {
-            updateStatus('Эфир подключен');
-            startMetadataMonitoring();
+            console.log('Манифест загружен, можно воспроизводить');
+            updateStatus('Эфир подключен - нажмите Play');
+            isHlsInitialized = true;
+        });
+        
+        hls.on(Hls.Events.LEVEL_LOADED, function(event, data) {
+            console.log('Уровень загружен:', data);
+        });
+        
+        hls.on(Hls.Events.FRAG_LOADED, function(event, data) {
+            console.log('Фрагмент загружен');
         });
         
         // Слушаем метаданные
         hls.on(Hls.Events.FRAG_PARSING_METADATA, function(event, data) {
+            console.log('Метаданные получены:', data);
             if (data.samples) {
                 parseID3Metadata(data.samples);
             }
@@ -47,15 +68,15 @@ function initHLS() {
             if (data.fatal) {
                 switch(data.type) {
                     case Hls.ErrorTypes.NETWORK_ERROR:
-                        updateStatus('Ошибка сети. Переподключение...');
-                        hls.startLoad();
+                        updateStatus('❌ Ошибка сети. Проверьте URL потока');
+                        console.error('Network error - проверьте URL:', STREAM_URL);
                         break;
                     case Hls.ErrorTypes.MEDIA_ERROR:
-                        updateStatus('Ошибка медиа. Перезагрузка...');
+                        updateStatus('❌ Ошибка медиа формата');
                         hls.recoverMediaError();
                         break;
                     default:
-                        updateStatus('Ошибка подключения к эфиру');
+                        updateStatus('❌ Критическая ошибка HLS');
                         break;
                 }
             }
@@ -63,14 +84,85 @@ function initHLS() {
         
     } else if (audio.canPlayType('application/vnd.apple.mpegurl')) {
         // Для Safari
+        console.log('Используется встроенный HLS плеер Safari');
         audio.src = STREAM_URL;
-        updateStatus('Подключение к эфиру...');
-        startFallbackMetadataMonitoring();
+        audio.addEventListener('loadedmetadata', function() {
+            updateStatus('Safari: поток готов');
+            isHlsInitialized = true;
+        });
     } else {
-        updateStatus('Браузер не поддерживает трансляцию');
+        updateStatus('❌ Браузер не поддерживает HLS');
+        console.error('HLS not supported');
     }
 }
 
+function togglePlay() {
+    console.log('Toggle play, isPlaying:', isPlaying, 'isHlsInitialized:', isHlsInitialized);
+    
+    if (!isHlsInitialized) {
+        console.log('Первая инициализация HLS');
+        initHLS();
+        updateStatus('Инициализация потока...');
+        // Даем время на инициализацию
+        setTimeout(() => {
+            if (isHlsInitialized) {
+                startPlayback();
+            } else {
+                updateStatus('❌ Ошибка инициализации. Проверьте консоль.');
+            }
+        }, 2000);
+        return;
+    }
+    
+    if (isPlaying) {
+        pausePlayback();
+    } else {
+        startPlayback();
+    }
+}
+
+function startPlayback() {
+    console.log('Запуск воспроизведения');
+    
+    if (hls) {
+        hls.startLoad(-1); // Начинаем загрузку с текущей позиции
+    }
+    
+    audio.play().
+        then(() => {
+        console.log('Воспроизведение успешно запущено');
+        showPauseIcon();
+        isPlaying = true;
+        updateStatus('🎵 Эфир онлайн');
+        startProgressAnimation();
+        visualizer.classList.add('playing');
+        
+        // Запускаем мониторинг метаданных
+        startMetadataMonitoring();
+        
+    }).catch(error => {
+        console.error('Ошибка воспроизведения:', error);
+        updateStatus('❌ Ошибка: ' + error.message);
+        showPlayIcon();
+        isPlaying = false;
+    });
+}
+
+function pausePlayback() {
+    console.log('Пауза');
+    audio.pause();
+    showPlayIcon();
+    isPlaying = false;
+    updateStatus('⏸ Пауза');
+    stopProgressAnimation();
+    visualizer.classList.remove('playing');
+    
+    if (hls) {
+        hls.stopLoad();
+    }
+}
+
+// Остальные функции остаются без изменений
 function parseID3Metadata(samples) {
     if (!samples || samples.length === 0) return;
     
@@ -294,41 +386,6 @@ function updateFallbackTrackInfo() {
     }
 }
 
-function startFallbackMetadataMonitoring() {
-    setInterval(() => {
-        if (isPlaying) {
-            updateFallbackTrackInfo();
-        }
-    }, 30000);
-}
-
-function togglePlay() {
-    if (!hls && !audio.src) {
-        initHLS();
-        updateStatus('Подключение...');
-        return;
-    }
-    
-    if (isPlaying) {
-        audio.pause();
-        showPlayIcon();
-        updateStatus('Пауза');
-        stopProgressAnimation();
-        visualizer.classList.remove('playing');
-    } else {
-        audio.play().then(() => {
-            showPauseIcon();
-            updateStatus('Слушаем эфир...');
-            startProgressAnimation();
-            visualizer.classList.add('playing');
-        }).catch(error => {
-            console.error('Play failed:', error);
-            updateStatus('Ошибка воспроизведения');
-        });
-    }
-    isPlaying = !isPlaying;
-}
-
 function showPlayIcon() {
     playIcon.className = 'play-icon';
     playIcon.innerHTML = '';
@@ -346,6 +403,7 @@ function setVolume(value) {
 
 function updateStatus(message) {
     document.getElementById('status').textContent = message;
+    console.log('Status:', message);
 }
 
 function startProgressAnimation() {
@@ -355,7 +413,6 @@ function startProgressAnimation() {
         document.getElementById('progressFill').style.width = progress + '%';
     }, 100);
 }
-
 function stopProgressAnimation() {
     if (progressInterval) {
         clearInterval(progressInterval);
@@ -364,7 +421,6 @@ function stopProgressAnimation() {
 }
 
 function skipBack() {
-    // Функция перемотки назад
     tg.showPopup({
         title: 'Перемотка',
         message: 'Функция в разработке'
@@ -372,7 +428,6 @@ function skipBack() {
 }
 
 function skipForward() {
-    // Функция перемотки вперед
     tg.showPopup({
         title: 'Перемотка',
         message: 'Функция в разработке'
@@ -390,33 +445,43 @@ function closeApp() {
 
 // Обработчики событий аудио
 audio.addEventListener('play', () => {
+    console.log('Audio play event');
     showPauseIcon();
     isPlaying = true;
-    updateStatus('Эфир онлайн');
+    updateStatus('🎵 Эфир онлайн');
     visualizer.classList.add('playing');
 });
 
 audio.addEventListener('pause', () => {
+    console.log('Audio pause event');
     showPlayIcon();
     isPlaying = false;
-    updateStatus('Пауза');
+    updateStatus('⏸ Пауза');
     visualizer.classList.remove('playing');
 });
 
 audio.addEventListener('waiting', () => {
-    updateStatus('Буферизация...');
+    console.log('Audio waiting event');
+    updateStatus('⏳ Буферизация...');
     visualizer.classList.remove('playing');
 });
 
 audio.addEventListener('playing', () => {
-    updateStatus('Эфир онлайн');
+    console.log('Audio playing event');
+    updateStatus('🎵 Эфир онлайн');
     visualizer.classList.add('playing');
+});
+
+audio.addEventListener('error', (e) => {
+    console.error('Audio error:', e);
+    updateStatus('❌ Ошибка аудио');
 });
 
 // Инициализация
 setVolume(60);
 
-// Автоматическая инициализация
+// Автоматическая инициализация при загрузке
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM loaded, initializing HLS...');
     initHLS();
 });
