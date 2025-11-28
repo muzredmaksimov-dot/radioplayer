@@ -3,654 +3,97 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RadioHub</title>
+    <title>МИР Радио</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            font-family: 'Segoe UI', sans-serif;
-            min-height: 100vh;
-            padding: 20px;
-        }
-        
-        .container {
-            max-width: 400px;
-            margin: 0 auto;
-        }
-        
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 30px;
-        }
-        
-        .close-btn {
-            background: rgba(255,255,255,0.2);
-            border: none;
-            color: white;
-            padding: 8px 15px;
-            border-radius: 15px;
-            cursor: pointer;
-        }
-        
-        .app-title {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-        
-        .app-title h1 {
-            font-size: 24px;
-            margin-bottom: 5px;
-        }
-        
-        .app-title .subtitle {
-            font-size: 12px;
-            opacity: 0.8;
-        }
-        
-        .player-card {
-            background: rgba(255,255,255,0.1);
-            backdrop-filter: blur(10px);
-            border-radius: 20px;
-            padding: 25px;
-            margin-bottom: 20px;
-            text-align: center;
-        }
-        
-        .now-playing {
-            margin-bottom: 25px;
-        }
-        
-        .station-name {
-            font-size: 16px;
-            opacity: 0.8;
-            margin-bottom: 10px;
-        }
-        
-        .song-title {
-            font-size: 20px;
-            font-weight: bold;
-            margin-bottom: 8px;
-            min-height: 28px;
-            transition: all 0.3s ease;
-        }
-        
-        .song-artist {
-            font-size: 16px;
-            opacity: 0.9;
-            min-height: 20px;
-            transition: all 0.3s ease;
-        }
-        
-        .new-track-indicator {
-            background: rgba(255,255,255,0.2);
-            padding: 4px 8px;
-            border-radius: 10px;
-            font-size: 10px;
-            margin-left: 8px;
-            animation: pulse 2s infinite;
-        }
-        
-        @keyframes pulse {
-            0% { opacity: 0.6; }
-            50% { opacity: 1; }
-            100% { opacity: 0.6; }
-        }
-        
-        .player-controls {
-            margin: 30px 0;
-        }
-        
-        .play-btn {
-            background: rgba(255,255,255,0.3);
-            border: none;
-            color: white;
-            width: 80px;
-            height: 80px;
-            border-radius: 50%;
-            font-size: 28px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-        
-        .play-btn:hover {
-            background: rgba(255,255,255,0.4);
-            transform: scale(1.05);
-        }
-        
-        .volume-control {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-top: 20px;
-        }
-        
-        .volume-slider {
-            flex: 1;
-            height: 4px;
-            background: rgba(255,255,255,0.3);
-            border-radius: 2px;
-            outline: none;
-        }
-        
-        .status {
-            font-size: 12px;
-            opacity: 0.7;
-            margin-top: 15px;
-        }
-        
-        .footer {
-            text-align: center;
-            margin-top: 30px;
-            font-size: 12px;
-            opacity: 0.7;
-        }
-        
-        .loading {
-            opacity: 0.6;
-        }
-        
-        .metadata-info {
-            background: rgba(255,255,255,0.1);
-            border-radius: 10px;
-            padding: 15px;
-            margin-top: 15px;
-            font-size: 12px;
-            text-align: left;
-        }
-        
-        .metadata-item {
-            margin-bottom: 5px;
-            word-break: break-all;
-        }
-        
-        .track-history {
-            background: rgba(255,255,255,0.1);
-            border-radius: 10px;
-            padding: 15px;
-            margin-top: 15px;
-            max-height: 120px;
-            overflow-y: auto;
-        }
-        
-        .history-title {
-            font-size: 12px;
-            opacity: 0.7;
-            margin-bottom: 8px;
-        }
-        
-        .history-item {
-            font-size: 11px;
-            padding: 4px 0;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-        }
-        
-        .history-item:last-child {
-            border-bottom: none;
-        }
-    </style>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="container">
+    <div class="container fade-in">
         <div class="header">
-            <button class="close-btn" onclick="closeApp()">Закрыть</button>
+            <button class="close-btn" onclick="closeApp()">
+                <span class="close-icon"></span>
+                Закрыть
+            </button>
         </div>
         
-        <div class="app-title">
-            <h1>RadioHub</h1>
-            <div class="subtitle">МИНИ-ПРИЛОЖЕНИЕ</div>
+        <div class="logo-section">
+            <div class="logo">МИР</div>
+            <div class="slogan">Все включено!</div>
+            <div class="subtitle">ОНЛАЙН РАДИО</div>
         </div>
         
         <div class="player-card">
             <div class="now-playing">
-                <div class="station-name" id="stationName">RADIOHUB MAIN</div>
-                <div class="song-title" id="currentSong">Загрузка метаданных...</div>
-                <div class="song-artist" id="currentArtist">Ожидание потока</div>
+                <div class="station-info">
+                    <div class="station-badge">ЭФИР</div>
+                    <div class="live-indicator">
+                        <div class="live-dot"></div>
+                        <span>LIVE</span>
+                    </div>
+                </div>
+                <div class="track-info">
+                    <div class="song-title" id="currentSong">Загрузка эфира...</div>
+                    <div class="song-artist" id="currentArtist">МИР Радио</div>
+                </div>
+            </div>
+            
+            <div class="visualizer" id="visualizer">
+                <div class="visualizer-bar"></div>
+                <div class="visualizer-bar"></div>
+                <div class="visualizer-bar"></div>
+                <div class="visualizer-bar"></div>
+                <div class="visualizer-bar"></div>
             </div>
             
             <div class="player-controls">
-                <button class="play-btn" onclick="togglePlay()" id="playBtn">▶️</button>
+                <button class="control-btn secondary" onclick="skipBack()">
+                    <span class="skip-icon">⏮</span>
+                </button>
+                <button class="play-btn" onclick="togglePlay()" id="playBtn">
+                    <div class="play-icon" id="playIcon"></div>
+                </button>
+                <button class="control-btn secondary" onclick="skipForward()">
+                    <span class="skip-icon">⏭</span>
+                </button>
+            </div>
+            
+            <div class="progress-container">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
             </div>
             
             <div class="volume-control">
-                <span>🔊</span>
-                <input type="range" class="volume-slider" min="0" max="100" value="50" oninput="setVolume(this.value)">
+                <div class="volume-icon">🔊</div>
+                <input type="range" class="volume-slider" min="0" max="100" value="60" oninput="setVolume(this.value)">
+                <div class="volume-value" id="volumeValue">60%</div>
             </div>
             
-            <div class="status" id="status">Подключение к потоку...</div>
+            <div class="status" id="status">Подключение к эфиру...</div>
             
-            <div class="track-history" id="trackHistory" style="display: none;">
-                <div class="history-title">История треков:</div>
-                <div id="historyList"></div>
-            </div>
-            
-            <div class="metadata-info" id="metadataInfo" style="display: none;">
-                <div class="metadata-item" id="metadataUrl">URL: </div>
-                <div class="metadata-item" id="metadataBitrate">Bitrate: </div>
-                <div class="metadata-item" id="metadataCodecs">Codecs: </div>
+            <div class="track-history" id="trackHistory">
+                <div class="history-header">
+                    <span class="history-title">Недавно звучало</span>
+                    <button class="history-toggle" onclick="toggleHistory()">
+                        <span class="toggle-icon">▼</span>
+                    </button>
+                </div>
+                <div class="history-list" id="historyList"></div>
             </div>
         </div>
         
         <div class="footer">
-            СОЗДАНО КОМАНДОЙ digital
+            <div class="footer-text">СОЗДАНО КОМАНДОЙ DIGITAL</div>
+            <div class="organization">
+                Межгосударственная телерадиокомпания «МИР»<br>
+                Республика Беларусь
+            </div>
         </div>
         
         <audio id="audioPlayer" preload="none"></audio>
     </div>
 
-    <script>
-        const tg = window.Telegram.WebApp;
-        const audio = document.getElementById('audioPlayer');
-        const playBtn = document.getElementById('playBtn');
-        
-        // ЗАМЕНИТЕ НА ВАШ HLS ПОТОК
-        const STREAM_URL = 'https://media1.datacenter.by:1936/radiomir/radiomir/playlist.m3u8';
-        
-        let hls;
-        let isPlaying = false;
-        let currentMetadata = {};
-        let trackHistory = [];
-        let lastTrackId = null;
-
-        // Инициализация Telegram Web App
-        tg.expand();
-        tg.enableClosingConfirmation();
-
-        function initHLS() {
-            if (Hls.isSupported()) {
-                hls = new Hls({
-                    enableWorker: false,
-                    lowLatencyMode: true,
-                    backBufferLength: 90,
-                    enableCEA708Captions: true,
-                    enableWebVTT: true
-                });
-                
-                hls.loadSource(STREAM_URL);
-                hls.attachMedia(audio);
-                
-                hls.on(Hls.Events.MANIFEST_PARSED, function() {
-                    updateStatus('Поток загружен, готов к воспроизведению');
-                    showMetadataInfo();
-                });
-                
-                hls.on(Hls.Events.LEVEL_LOADED, function(event, data) {
-                    updateBitrateInfo(data.details.totalduration, data.details.fragments);
-                });
-                
-                // Слушаем фрагменты для извлечения метаданных
-                hls.on(Hls.Events.FRAG_PARSING_METADATA, function(event, data) {
-                    parseMetadata(data);
-                });
-                
-                // Слушаем ID3 метаданные
-                hls.on(Hls.Events.FRAG_PARSING_METADATA, function(event, data) {
-                    if (data.samples && data.samples.length > 0) {
-                        parseID3Metadata(data.samples);
-                    }
-                });
-                
-                hls.on(Hls.Events.ERROR, function(event, data) {
-                    console.error('HLS Error:', data);
-                    if (data.fatal) {
-                        switch(data.type) {
-                            case Hls.ErrorTypes.NETWORK_ERROR:
-                                updateStatus('Ошибка сети. Попытка переподключения...');
-                                hls.startLoad();
-                                break;
-                            case Hls.ErrorTypes.MEDIA_ERROR:
-                                updateStatus('Ошибка медиа. Перезагрузка...');
-                                hls.recoverMediaError();
-                                break;
-                            default:
-                                updateStatus('Критическая ошибка. Перезапустите приложение.');
-                                break;
-                        }
-                    }
-                });
-                
-            } else if (audio.canPlayType('application/vnd.apple.mpegurl')) {
-                // Для Safari (ограниченная поддержка метаданных)
-                audio.src = STREAM_URL;
-                updateStatus('Используется встроенный HLS плеер');
-                startFallbackMetadataMonitoring();
-            } else {
-                updateStatus('HLS не поддерживается вашим браузером');
-            }
-        }
-
-        function parseMetadata(data) {
-            if (!data.samples || data.samples.length === 0) return;
-            
-            data.samples.forEach(sample => {
-                try {
-                    // Парсим ID3 теги
-                    if (sample.type === 'ID3') {
-                        parseID3Data(sample.data);
-                    }
-                    
-                    // Парсим CEA-608/708 captions (текстовые данные)
-                    if (sample.type === 'text') {
-                        parseTextMetadata(sample.text);
-                    }
-                } catch (error) {
-                    console.warn('Error parsing metadata:', error);
-                }
-            });
-        }
-
-        function parseID3Metadata(samples) {
-            samples.forEach(sample => {
-                try {
-                    // Простой парсинг ID3 данных
-                    const dataView = new DataView(sample.data);
-                    if (dataView.getUint16(0) === 0x4944) { // 'ID' в ID3
-                        parseID3Frame(dataView);
-                    }
-                } catch (error) {
-                    console.warn('Error parsing ID3:', error);
-                }
-            });
-        }
-
-        function parseID3Frame(dataView) {
-            let offset = 10; // Пропускаем ID3 header
-            
-            while (offset < dataView.byteLength - 10) {
-                const frameId = String.fromCharCode(
-                    dataView.getUint8(offset),
-                    dataView.getUint8(offset + 1),
-                    dataView.getUint8(offset + 2),
-                    dataView.getUint8(offset + 3)
-                );
-                
-                const size = dataView.getUint32(offset + 4);
-                offset += 10;
-                
-                if (size === 0) break;
-                
-                try {
-                    const frameData = new TextDecoder('utf-8').decode(
-                        new DataView(dataView.buffer, offset, size)
-                    );
-                    
-                    processID3Frame(frameId, frameData.trim());
-                    
-                } catch (error) {
-                    console.warn('Error decoding ID3 frame:', error);
-                }
-                
-                offset += size;
-            }
-        }
-
-        function processID3Frame(frameId, frameData) {
-            switch(frameId) {
-                case 'TIT2': // Название трека
-                    updateTrackField('title', frameData);
-                    break;
-                case 'TPE1': // Исполнитель
-                    updateTrackField('artist', frameData);
-                    break;
-                case 'TALB': // Альбом
-                    updateTrackField('album', frameData);
-                    break;
-                case 'TCOM': // Композитор
-                    updateTrackField('composer', frameData);
-                    break;
-                case 'COMM': // Комментарий (часто содержит метаданные радио)
-                    if (frameData.includes(' - ') || frameData.includes('|')) {
-                        parseRadioFormatMetadata(frameData);
-                    }
-                    break;
-                default:
-                    // Пробуем парсить кастомные форматы радиостанций
-                    if (frameData.includes(' - ')) {
-                        parseStandardFormat(frameData);
-                    }
-                    break;
-            }
-        }
-
-        function parseRadioFormatMetadata(text) {
-            // Форматы: "Artist - Title", "Title - Artist", "Artist | Title"
-            const patterns = [
-                /(.+?)\s*-\s*(.+)/, // Artist - Title
-                /(.+?)\s*\|\s*(.+)/, // Artist | Title
-                /(.+?)\s*:\s*(.+)/  // Artist: Title
-            ];
-            
-            for (let pattern of patterns) {
-                const match = text.match(pattern);
-                if (match) {
-                    const [, part1, part2] = match;
-                    // Эвристика: что исполнитель, что трек
-                    if (part1.length < 30 && part2.length < 30) {
-                        updateTrackField('artist', part1.trim());
-                        updateTrackField('title', part2.trim());
-                        return true;
-                    }
-                }
-            }
-            return false;
-        }
-
-        function parseStandardFormat(text) {
-            // Простой формат "Artist - Title"
-            const parts = text.split(' - ');
-            if (parts.length === 2) {
-                updateTrackField('artist', parts[0].trim());
-                updateTrackField('title', parts[1].trim());
-                return true;
-            }
-            return false;
-        }
-
-        function parseTextMetadata(text) {
-            // Парсим текстовые метаданные (CEA-608/708, WebVTT)
-            if (text.includes(' - ') || text.includes('|')) {
-                parseRadioFormatMetadata(text);
-            }
-        }
-
-        function updateTrackField(field, value) {
-            if (!value || value === currentMetadata[field]) return;
-            
-            currentMetadata[field] = value;
-            
-            // Обновляем UI когда есть и исполнитель и трек
-            if (currentMetadata.title && currentMetadata.artist) {
-                const trackId = currentMetadata.title + currentMetadata.artist;
-                if (trackId !== lastTrackId) {
-                    lastTrackId = trackId;
-                    updateTrackDisplay();
-                    addToHistory(currentMetadata.title, currentMetadata.artist);
-                }
-            }
-        }
-
-        function updateTrackDisplay() {
-            const titleElement = document.getElementById('currentSong');
-            const artistElement = document.getElementById('currentArtist');
-            
-            titleElement.textContent = currentMetadata.title || 'Неизвестный трек';
-            artistElement.textContent = currentMetadata.artist || 'Неизвестный исполнитель';
-            
-            // Анимация смены трека
-            titleElement.style.opacity = '0';
-            artistElement.style.opacity = '0';
-            
-            setTimeout(() => {
-                titleElement.style.opacity = '1';
-                artistElement.style.opacity = '1';
-                
-                // Показываем индикатор нового трека
-                showNewTrackIndicator();
-            }, 200);
-        }
-
-        function showNewTrackIndicator() {
-            const titleElement = document.getElementById('currentSong');
-            let indicator = titleElement.querySelector('.new-track-indicator');
-            
-            if (!indicator) {
-                indicator = document.createElement('span');
-                indicator.className = 'new-track-indicator';
-                indicator.textContent = 'NEW';
-                titleElement.appendChild(indicator);
-            }
-            
-            setTimeout(() => {
-                if (indicator && indicator.parentNode) {
-                    indicator.remove();
-                }
-            }, 5000);
-        }
-
-        function addToHistory(title, artist) {
-            const timestamp = new Date().toLocaleTimeString('ru-RU', {
-                hour: '2-digit',
-                minute: '2-digit'
-            });
-            
-            trackHistory.unshift({
-                title,
-                artist,
-                timestamp,
-                id: Date.now()
-            });
-            
-            // Ограничиваем историю 10 треками
-            if (trackHistory.length > 10) {
-                trackHistory = trackHistory.slice(0, 10);
-            }
-            
-            updateHistoryDisplay();
-        }
-
-        function updateHistoryDisplay() {
-            const historyList = document.getElementById('historyList');
-            const trackHistoryElement = document.getElementById('trackHistory');
-            
-            if (trackHistory.length > 0) {
-                trackHistoryElement.style.display = 'block';
-            }
-            
-            historyList.innerHTML = trackHistory.map(track => 
-                `<div class="history-item">
-                    <strong>${track.title}</strong> - ${track.artist} 
-                    <span style="opacity:0.5">(${track.timestamp})</span>
-                </div>`
-            ).join('');
-        }
-
-        function startFallbackMetadataMonitoring() {
-            // Fallback для браузеров без полной поддержки HLS
-            setInterval(() => {
-                if (isPlaying) {
-                    // Можно добавить запрос к API радиостанции за текущим треком
-                    fetchCurrentTrackFromAPI();
-                }
-            }, 10000);
-        }
-
-        function fetchCurrentTrackFromAPI() {
-            // Здесь можно добавить запрос к API вашей радиостанции
-            // если она предоставляет текущий трек через REST API
-            console.log('Fetching current track from API...');
-        }
-
-        function togglePlay() {
-            if (!hls && !audio.src) {
-                initHLS();
-            }
-            
-            if (isPlaying) {
-                audio.pause();
-                playBtn.innerHTML = '▶️';
-                updateStatus('Пауза');
-            } else {
-                audio.play().then(() => {
-                    playBtn.innerHTML = '⏸';
-                    updateStatus('Воспроизведение...');
-                }).catch(error => {
-                    console.error('Play failed:', error);
-                    updateStatus('Ошибка воспроизведения: ' + error.message);
-                });
-            }
-            isPlaying = !isPlaying;
-        }
-
-        function setVolume(value) {
-            audio.volume = value / 100;
-        }
-
-        function updateStatus(message) {
-            document.getElementById('status').textContent = message;
-        }
-
-        function showMetadataInfo() {
-            const metadataInfo = document.getElementById('metadataInfo');
-            const metadataUrl = document.getElementById('metadataUrl');
-            
-            metadataUrl.textContent = 'URL: ' + STREAM_URL;
-            metadataInfo.style.display = 'block';
-        }
-
-        function updateBitrateInfo(duration, fragments) {
-            if (fragments && fragments.length > 0) {
-                const totalSize = fragments.reduce((sum, frag) => sum + frag.size, 0);
-                const bitrate = Math.round((totalSize * 8) / (duration * 1000));
-                document.getElementById('metadataBitrate').textContent = `Bitrate: ~${bitrate} kbps`;
-            }
-        }
-
-        function closeApp() {
-            if (hls) {
-                hls.destroy();
-            }
-            audio.pause();
-            tg.close();
-        }
-
-        // Обработчики событий аудио
-        audio.addEventListener('play', () => {
-            playBtn.innerHTML = '⏸';
-            isPlaying = true;
-            updateStatus('В эфире');
-        });
-
-        audio.addEventListener('pause', () => {
-            playBtn.innerHTML = '▶️';
-            isPlaying = false;
-            updateStatus('Пауза');
-        });
-
-        audio.addEventListener('waiting', () => {
-            updateStatus('Буферизация...');
-        });
-
-        audio.addEventListener('playing', () => {
-            updateStatus('В эфире');
-        });
-
-        // Инициализация
-        setVolume(50);
-
-        // Автоматическая инициализация HLS при загрузке
-        document.addEventListener('DOMContentLoaded', function() {
-            initHLS();
-        });
-
-    </script>
+    <script src="app.js"></script>
 </body>
 </html>
