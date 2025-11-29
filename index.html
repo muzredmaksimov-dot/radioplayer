@@ -201,37 +201,6 @@
             border-radius: 3px;
         }
         
-        .volume-control {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin-top: 25px;
-        }
-        
-        .volume-icon {
-            font-size: 22px;
-            opacity: 0.8;
-            min-width: 30px;
-        }
-        
-        .volume-slider {
-            flex: 1;
-            height: 6px;
-            background: rgba(255,255,255,0.2);
-            border-radius: 3px;
-            outline: none;
-            -webkit-appearance: none;
-        }
-        
-        .volume-slider::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            width: 18px;
-            height: 18px;
-            border-radius: 50%;
-            background: white;
-            cursor: pointer;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-        }
         
         .status {
             font-size: 13px;
@@ -320,9 +289,6 @@
 </head>
 <body>
     <div class="container fade-in">
-        <div class="header">
-            <button class="close-btn" onclick="closeApp()">Закрыть</button>
-        </div>
         
         <div class="logo-section">
             <div class="logo">МИР</div>
@@ -346,11 +312,6 @@
                 <button class="play-btn" onclick="togglePlay()" id="playBtn">
                     <div class="play-icon" id="playIcon"></div>
                 </button>
-            </div>
-            
-            <div class="volume-control">
-                <div class="volume-icon">🔊</div>
-                <input type="range" class="volume-slider" min="0" max="100" value="60" oninput="setVolume(this.value)">
             </div>
             
             <div class="status" id="status">Подключение к эфиру...</div>
