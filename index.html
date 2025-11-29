@@ -335,382 +335,177 @@
 
     <script>
         const tg = window.Telegram.WebApp;
-        const audio = document.getElementById('audioPlayer');
-        const playBtn = document.getElementById('playBtn');
-        const playIcon = document.getElementById('playIcon');
-        
-        // Поток радио МИР
-        const STREAM_URL = 'https://media1.datacenter.by:1936/radiomir/radiomir/playlist.m3u8';
-        
-        let hls;
-        let isPlaying = false;
-        let currentMetadata = {};
-        let lastMetadata = '';
-        let trackHistory = [];
+tg.expand();
+tg.enableClosingConfirmation();
 
-        // Инициализация Telegram Web App
-        tg.expand();
-        tg.enableClosingConfirmation();
+const audio = document.getElementById('audioPlayer');
+const playBtn = document.getElementById('playBtn');
+const playIcon = document.getElementById('playIcon');
+const STREAM_URL = 'https://media1.datacenter.by:1936/radiomir/radiomir/playlist.m3u8';
 
-        function initHLS() {
-            if (Hls.isSupported()) {
-                hls = new Hls({
-                    enableWorker: false,
-                    lowLatencyMode: true,
-                    backBufferLength: 90,
-                    debug: false
-                });
-                
-                hls.loadSource(STREAM_URL);
-                hls.attachMedia(audio);
-                
-                hls.on(Hls.Events.MANIFEST_PARSED, function() {
-                    updateStatus('Эфир подключен');
-                    startMetadataMonitoring();
-                });
-                
-                // Слушаем метаданные
-                hls.on(Hls.Events.FRAG_PARSING_METADATA, function(event, data) {
-                    if (data.samples) {
-                        parseID3Metadata(data.samples);
-                    }
-                });
-                
-                hls.on(Hls.Events.ERROR, function(event, data) {
-                    console.error('HLS Error:', data);
-                    if (data.fatal) {
-                        switch(data.type) {
-                            case Hls.ErrorTypes.NETWORK_ERROR:
-                                updateStatus('Ошибка сети. Переподключение...');
-                                hls.startLoad();
-                                break;
-                            case Hls.ErrorTypes.MEDIA_ERROR:
-                                updateStatus('Ошибка медиа. Перезагрузка...');
-                                hls.recoverMediaError();
-                                break;
-                            default:
-                                updateStatus('Ошибка подключения к эфиру');
-                                break;
-                        }
-                    }
-                });
-                
-            } else if (audio.canPlayType('application/vnd.apple.mpegurl')) {
-                // Для Safari
-                audio.src = STREAM_URL;
-                updateStatus('Подключение к эфиру...');
-                startFallbackMetadataMonitoring();
-            } else {
-                updateStatus('Браузер не поддерживает трансляцию');
-            }
-        }
+let hls;
+let isPlaying = false;
+let currentMetadata = {};
+let lastMetadata = '';
+let trackHistory = [];
 
-        function parseID3Metadata(samples) {
-            if (!samples || samples.length === 0) return;
-            
-            samples.forEach(sample => {
-                try {
-                    if (sample.type === 'ID3') {
-                        parseID3Data(sample.data);
-                    }
-                } catch (error) {
-                    console.warn('Error parsing ID3:', error);
-                }
-            });
-        }
+// --- Фолбэк треков ---
+const fallbackTracks = [
+    { title: "Новости мира", artist: "Радио МИР" },
+    { title: "Музыкальный эфир", artist: "Все включено!" },
+    { title: "Информационная программа", artist: "Межгосударственная ТРК МИР" }
+];
 
-        function parseID3Data(data) {
-            try {
-                const dataView = new DataView(data);
-                if (dataView.getUint16(0) !== 0x4944) return;
-                
-                let offset = 10;
-                while (offset < dataView.byteLength - 10) {
-                    const frameId = String.fromCharCode(
-                        dataView.getUint8(offset),
-                        dataView.getUint8(offset + 1),
-                        dataView.getUint8(offset + 2),
-                        dataView.getUint8(offset + 3)
-                    );
-                    
-                    const size = dataView.getUint32(offset + 4);
-                    offset += 10;
-                    
-                    if (size === 0) break;
-                    
-                    try {
-                        const textDecoder = new TextDecoder('utf-8');
-                        const frameData = textDecoder.decode(
-                            new DataView(dataView.buffer, offset, size)
-                        ).trim().replace(/\0/g, '');
-                        
-                        processID3Frame(frameId, frameData);
-                        
-                    } catch (error) {
-                        console.warn('Error decoding frame:', error);
-                    }
-                    
-                    offset += size;
-                }
-            } catch (error) {
-                console.warn('Error parsing ID3 data:', error);
-            }
-        }
+function initHLS() {
+    if (Hls.isSupported()) {
+        hls = new Hls({ enableWorker:false, lowLatencyMode:true, backBufferLength:90, debug:false });
+        hls.loadSource(STREAM_URL);
+        hls.attachMedia(audio);
 
-        function processID3Frame(frameId, frameData) {
-            if (!frameData) return;
-            
-            switch(frameId) {
-                case 'TIT2': // Название трека
-                    if (frameData && frameData !== currentMetadata.title) {
-                        currentMetadata.title = frameData;
-                        updateTrackDisplay();
-                    }
-                    break;
-                case 'TPE1': // Исполнитель
-                    if (frameData && frameData !== currentMetadata.artist) {
-                        currentMetadata.artist = frameData;
-                        updateTrackDisplay();
-                    }
-                    break;
-                case 'COMM': // Комментарий
-                    parseCommentMetadata(frameData);
-                    break;
-                default:
-                    if (frameData.includes(' - ')) {
-                        parseGenericMetadata(frameData);
-                    }
-                    break;
-            }
-        }
+        hls.on(Hls.Events.MANIFEST_PARSED, () => { updateStatus('Эфир подключен'); });
 
-        function parseCommentMetadata(text) {
-            const patterns = [
-                /(.+?)\s*-\s*(.+)/,
-                /(.+?)\s*\|\s*(.+)/
-            ];
-            
-            for (let pattern of patterns) {
-                const match = text.match(pattern);
-                if (match) {
-                    const artist = match[1].trim();
-                    const title = match[2].trim();
-                    
-                    if (artist && title && artist.length < 50 && title.length < 50) {
-                        currentMetadata.artist = artist;
-                        currentMetadata.title = title;
-                        updateTrackDisplay();
-                        return true;
-                    }
+        hls.on(Hls.Events.FRAG_PARSING_METADATA, (event,data) => { parseID3Metadata(data.samples); });
+
+        hls.on(Hls.Events.ERROR, (event,data) => {
+            console.error('HLS Error:', data);
+            if(data.fatal){
+                switch(data.type){
+                    case Hls.ErrorTypes.NETWORK_ERROR: updateStatus('Ошибка сети. Переподключение...'); hls.startLoad(); break;
+                    case Hls.ErrorTypes.MEDIA_ERROR: updateStatus('Ошибка медиа. Перезагрузка...'); hls.recoverMediaError(); break;
+                    default: updateStatus('Ошибка подключения к эфиру'); break;
                 }
             }
-            return false;
-        }
-
-        function parseGenericMetadata(text) {
-            if (text.includes(' - ')) {
-                const parts = text.split(' - ');
-                if (parts.length === 2) {
-                    const part1 = parts[0].trim();
-                    const part2 = parts[1].trim();
-                    
-                    if (part1.length < part2.length) {
-                        currentMetadata.artist = part1;
-                        currentMetadata.title = part2;
-                    } else {
-                        currentMetadata.artist = part2;
-                        currentMetadata.title = part1;
-                    }
-                    updateTrackDisplay();
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        function updateTrackDisplay() {
-            if (!currentMetadata.title && !currentMetadata.artist) return;
-            
-            const title = currentMetadata.title || 'Радио МИР';
-            const artist = currentMetadata.artist || 'Прямой эфир';
-            
-            const currentMetadataString = title + artist;
-            if (currentMetadataString === lastMetadata) return;
-            
-            lastMetadata = currentMetadataString;
-            
-            const titleElement = document.getElementById('currentSong');
-            const artistElement = document.getElementById('currentArtist');
-            
-            titleElement.textContent = title;
-            artistElement.textContent = artist;
-            
-            // Анимация смены трека
-            titleElement.style.opacity = '0.5';
-            artistElement.style.opacity = '0.5';
-            
-            setTimeout(() => {
-                titleElement.style.opacity = '1';
-                artistElement.style.opacity = '1';
-            }, 300);
-            
-            updateStatus('В эфире: ' + title);
-            addToHistory(title, artist);
-            
-            // Показываем историю
-            document.getElementById('trackHistory').classList.add('expanded');
-        }
-
-        function addToHistory(title, artist) {
-            const timestamp = new Date().toLocaleTimeString('ru-RU', {
-                hour: '2-digit',
-                minute: '2-digit'
-            });
-            
-            // Проверяем, не тот ли это же трек
-            const lastTrack = trackHistory[0];
-            if (lastTrack && lastTrack.title === title && lastTrack.artist === artist) {
-                return;
-            }
-            
-            trackHistory.unshift({
-                title,
-                artist,
-                timestamp,
-                id: Date.now()
-            });
-            
-            // Ограничиваем историю 5 треками
-            if (trackHistory.length > 5) {
-                trackHistory = trackHistory.slice(0, 5);
-            }
-            
-            updateHistoryDisplay();
-        }
-
-        function updateHistoryDisplay() {
-            const historyList = document.getElementById('historyList');
-            
-            historyList.innerHTML = trackHistory.map(track => 
-                `<div class="history-item">
-                    <div class="history-track">
-                        <strong>${track.title}</strong> - ${track.artist}
-                    </div>
-                    <div class="history-time">${track.timestamp}</div>
-                </div>`
-            ).join('');
-        }
-
-        function startMetadataMonitoring() {
-            // Fallback мониторинг
-            setInterval(() => {
-                if (isPlaying && (!currentMetadata.title || !currentMetadata.artist)) {
-                    updateFallbackTrackInfo();
-                }
-            }, 30000);
-        }
-
-        function updateFallbackTrackInfo() {
-            const fallbackTracks = [
-                { title: "Новости мира", artist: "Радио МИР" },
-                { title: "Музыкальный эфир", artist: "Все включено!" },
-                { title: "Информационная программа", artist: "Межгосударственная ТРК МИР" }
-            ];
-            
-            if (!currentMetadata.title) {
-                const randomTrack = fallbackTracks[Math.floor(Math.random() * fallbackTracks.length)];
-                currentMetadata.title = randomTrack.title;
-                currentMetadata.artist = randomTrack.artist;
-                updateTrackDisplay();
-            }
-        }
-
-        function startFallbackMetadataMonitoring() {
-            setInterval(() => {
-                if (isPlaying) {
-                    updateFallbackTrackInfo();
-                }
-            }, 30000);
-        }
-
-        function togglePlay() {
-            if (!hls && !audio.src) {
-                initHLS();
-                updateStatus('Подключение...');
-                return;
-            }
-            
-            if (isPlaying) {
-                audio.pause();
-                showPlayIcon();
-                updateStatus('Пауза');
-            } else {
-                audio.play().then(() => {
-                    showPauseIcon();
-                    updateStatus('Слушаем эфир...');
-                }).catch(error => {
-                    console.error('Play failed:', error);
-                    updateStatus('Ошибка воспроизведения');
-                });
-            }
-            isPlaying = !isPlaying;
-        }
-
-        function showPlayIcon() {
-            playIcon.className = 'play-icon';
-            playIcon.innerHTML = '';
-        }
-
-        function showPauseIcon() {
-            playIcon.className = 'pause-icon';
-            playIcon.innerHTML = '<div class="pause-bar"></div><div class="pause-bar"></div>';
-        }
-
-        function setVolume(value) {
-            audio.volume = value / 100;
-        }
-
-        function updateStatus(message) {
-            document.getElementById('status').textContent = message;
-        }
-
-        function closeApp() {
-            if (hls) {
-                hls.destroy();
-            }
-            audio.pause();
-            tg.close();
-        }
-
-        // Обработчики событий аудио
-        audio.addEventListener('play', () => {
-            showPauseIcon();
-            isPlaying = true;
-            updateStatus('Эфир онлайн');
         });
 
-        audio.addEventListener('pause', () => {
-            showPlayIcon();
-            isPlaying = false;
-            updateStatus('Пауза');
-        });
+    } else if(audio.canPlayType('application/vnd.apple.mpegurl')) {
+        audio.src = STREAM_URL;
+        updateStatus('Подключение к эфиру...');
+    } else {
+        updateStatus('Браузер не поддерживает трансляцию');
+    }
+}
 
-        audio.addEventListener('waiting', () => {
-            updateStatus('Буферизация...');
-        });
+// --- Парсинг ID3 ---
+function parseID3Metadata(samples){
+    if(!samples) return;
+    samples.forEach(sample => {
+        if(sample.type==='ID3') parseID3Data(sample.data);
+    });
+}
 
-        audio.addEventListener('playing', () => {
-            updateStatus('Эфир онлайн');
-        });
+function parseID3Data(data){
+    try{
+        const dataView = new DataView(data);
+        if(dataView.getUint16(0)!==0x4944) return;
+        let offset=10;
+        while(offset<dataView.byteLength-10){
+            const frameId = String.fromCharCode(
+                dataView.getUint8(offset),
+                dataView.getUint8(offset+1),
+                dataView.getUint8(offset+2),
+                dataView.getUint8(offset+3)
+            );
+            const size = dataView.getUint32(offset+4);
+            offset += 10;
+            if(size===0) break;
+            const textDecoder = new TextDecoder('utf-8');
+            const frameData = textDecoder.decode(new DataView(dataView.buffer, offset, size)).trim().replace(/\0/g,'');
+            processMetadataFrame(frameId, frameData);
+            offset += size;
+        }
+    } catch(e){ console.warn('Ошибка парсинга ID3:',e); }
+}
 
-        // Инициализация
-        setVolume(60);
+function processMetadataFrame(frameId, frameData){
+    if(!frameData) return;
+    if(frameId==='TIT2') currentMetadata.title = frameData;
+    else if(frameId==='TPE1') currentMetadata.artist = frameData;
+    else processGenericMetadata(frameData);
+    updateTrackDisplay();
+}
 
-        // Автоматическая инициализация
-        document.addEventListener('DOMContentLoaded', function() {
-            initHLS();
-        });
+function processGenericMetadata(text){
+    if(!text) return;
+    if(text.includes(' - ')){
+        const parts = text.split(' - ');
+        currentMetadata.artist = parts[0].trim();
+        currentMetadata.title = parts[1].trim();
+    } else {
+        currentMetadata.title = text.trim();
+        if(!currentMetadata.artist) currentMetadata.artist='Радио МИР';
+    }
+}
 
+// --- Обновление отображения ---
+function updateTrackDisplay(){
+    if(!currentMetadata.title && !currentMetadata.artist) return;
+    const title = currentMetadata.title || 'Радио МИР';
+    const artist = currentMetadata.artist || 'Прямой эфир';
+    const metadataString = title + artist;
+    if(metadataString===lastMetadata) return;
+    lastMetadata = metadataString;
+    document.getElementById('currentSong').textContent = title;
+    document.getElementById('currentArtist').textContent = artist;
+    addToHistory(title,artist);
+    document.getElementById('trackHistory').classList.add('expanded');
+    updateStatus('В эфире: ' + title);
+}
+
+// --- История треков ---
+function addToHistory(title,artist){
+    const timestamp = new Date().toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
+    if(trackHistory[0] && trackHistory[0].title===title && trackHistory[0].artist===artist) return;
+    trackHistory.unshift({title,artist,timestamp,id:Date.now()});
+    if(trackHistory.length>5) trackHistory = trackHistory.slice(0,5);
+    updateHistoryDisplay();
+}
+
+function updateHistoryDisplay(){
+    const historyList = document.getElementById('historyList');
+    historyList.innerHTML = trackHistory.map(track => `
+        <div class="history-item">
+            <div class="history-track"><strong>${track.title}</strong> - ${track.artist}</div>
+            <div class="history-time">${track.timestamp}</div>
+        </div>`).join('');
+}
+
+// --- Управление плеером ---
+function togglePlay(){
+    if(!hls && !audio.src){ initHLS(); updateStatus('Подключение...'); return; }
+    if(isPlaying){ audio.pause(); showPlayIcon(); updateStatus('Пауза'); }
+    else{ audio.play().then(()=>{ showPauseIcon(); updateStatus('Слушаем эфир...'); }).catch(()=>updateStatus('Ошибка воспроизведения')); }
+    isPlaying=!isPlaying;
+}
+
+function showPlayIcon(){ playIcon.className='play-icon'; playIcon.innerHTML=''; }
+function showPauseIcon(){ playIcon.className='pause-icon'; playIcon.innerHTML='<div class="pause-bar"></div><div class="pause-bar"></div>'; }
+function updateStatus(message){ document.getElementById('status').textContent = message; }
+function setVolume(value){ audio.volume = value/100; }
+
+// --- События аудио ---
+audio.addEventListener('play',()=>{ showPauseIcon(); isPlaying=true; updateStatus('Эфир онлайн'); });
+audio.addEventListener('pause',()=>{ showPlayIcon(); isPlaying=false; updateStatus('Пауза'); });
+audio.addEventListener('waiting',()=>{ updateStatus('Буферизация...'); });
+audio.addEventListener('playing',()=>{ updateStatus('Эфир онлайн'); });
+
+// --- Фолбэк монитор ---
+function startFallbackMonitor() {
+    setInterval(() => {
+        if (isPlaying && (!currentMetadata.title || !currentMetadata.artist)) {
+            const randomTrack = fallbackTracks[Math.floor(Math.random() * fallbackTracks.length)];
+            currentMetadata.title = randomTrack.title;
+            currentMetadata.artist = randomTrack.artist;
+            updateTrackDisplay();
+        }
+    }, 30000);
+}
+
+// --- Инициализация ---
+document.addEventListener('DOMContentLoaded', () => {
+    setVolume(60);
+    initHLS();
+    startFallbackMonitor();
+});
     </script>
 </body>
 </html>
