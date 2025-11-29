@@ -1,153 +1,716 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Радио МИР</title>
-<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-<style>
-body { margin:0; padding:20px; background:linear-gradient(135deg,#1a237e 0%,#283593 50%,#3949ab 100%); color:white; font-family:sans-serif; }
-.container { max-width:400px; margin:0 auto; }
-.logo-section { text-align:center; margin-bottom:30px; }
-.logo { font-size:42px; font-weight:bold; background:linear-gradient(45deg,#fff,#bbdefb); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
-.slogan { font-size:16px; opacity:0.9; }
-.player-card { background:rgba(255,255,255,0.08); backdrop-filter:blur(20px); border-radius:24px; padding:30px 25px; margin-bottom:20px; }
-.now-playing { text-align:center; margin-bottom:30px; }
-.song-title { font-size:22px; font-weight:600; min-height:32px; background:linear-gradient(45deg,#fff,#bbdefb); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
-.song-artist { font-size:16px; opacity:0.9; min-height:22px; }
-.player-controls { display:flex; justify-content:center; margin:30px 0; }
-.play-btn { background:linear-gradient(45deg,#2196f3,#1976d2); border:none; width:90px; height:90px; border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center; }
-.play-icon { width:0; height:0; border-style:solid; border-width:18px 0 18px 32px; border-color:transparent transparent transparent white; margin-left:4px; }
-.pause-icon { width:32px; height:36px; display:flex; justify-content:space-between; }
-.pause-bar { width:10px; height:100%; background:white; border-radius:3px; }
-.status { text-align:center; font-size:13px; opacity:0.8; margin-top:20px; }
-.track-history { background:rgba(255,255,255,0.05); border-radius:16px; padding:15px; max-height:0; overflow:hidden; transition:max-height 0.3s ease; margin-top:20px; }
-.track-history.expanded { max-height:150px; }
-.history-title { font-size:12px; opacity:0.7; margin-bottom:10px; font-weight:500; }
-.history-item { font-size:11px; padding:6px 0; border-bottom:1px solid rgba(255,255,255,0.1); display:flex; justify-content:space-between; }
-.history-item:last-child { border-bottom:none; }
-.history-track { flex:1; }
-.history-time { opacity:0.5; font-size:10px; }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Радио МИР</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #1a237e 0%, #283593 50%, #3949ab 100%);
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 400px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+        }
+        
+        .close-btn {
+            background: rgba(255,255,255,0.15);
+            border: none;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            backdrop-filter: blur(10px);
+        }
+        
+        .logo-section {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .logo {
+            font-size: 42px;
+            font-weight: bold;
+            margin-bottom: 8px;
+            background: linear-gradient(45deg, #ffffff, #e3f2fd);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 2px 10px rgba(255,255,255,0.3);
+        }
+        
+        .slogan {
+            font-size: 16px;
+            opacity: 0.9;
+            font-weight: 300;
+            letter-spacing: 1px;
+            margin-bottom: 5px;
+        }
+        
+        .subtitle {
+            font-size: 12px;
+            opacity: 0.7;
+            font-weight: 300;
+        }
+        
+        .player-card {
+            background: rgba(255,255,255,0.08);
+            backdrop-filter: blur(20px);
+            border-radius: 24px;
+            padding: 30px 25px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255,255,255,0.1);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+        }
+        
+        .now-playing {
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        
+        .station-info {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .station-badge {
+            background: linear-gradient(45deg, #ff4081, #f50057);
+            padding: 6px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .live-indicator {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            background: rgba(255,255,255,0.1);
+            padding: 4px 10px;
+            border-radius: 10px;
+            font-size: 11px;
+        }
+        
+        .live-dot {
+            width: 6px;
+            height: 6px;
+            background: #ff5252;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.4; }
+            100% { opacity: 1; }
+        }
+        
+        .song-title {
+            font-size: 22px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            min-height: 32px;
+            transition: all 0.3s ease;
+            background: linear-gradient(45deg, #ffffff, #bbdefb);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .song-artist {
+            font-size: 16px;
+            opacity: 0.9;
+            min-height: 22px;
+            transition: all 0.3s ease;
+            font-weight: 400;
+        }
+        
+        .player-controls {
+            margin: 35px 0;
+            display: flex;
+            justify-content: center;
+        }
+        
+        .play-btn {
+            background: linear-gradient(45deg, #2196f3, #1976d2);
+            border: none;
+            color: white;
+            width: 90px;
+            height: 90px;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 6px 20px rgba(33, 150, 243, 0.4);
+        }
+        
+        .play-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 8px 25px rgba(33, 150, 243, 0.6);
+        }
+        
+        .play-btn:active {
+            transform: scale(0.95);
+        }
+        
+        .play-icon {
+            width: 0;
+            height: 0;
+            border-style: solid;
+            border-width: 18px 0 18px 32px;
+            border-color: transparent transparent transparent white;
+            margin-left: 4px;
+        }
+        
+        .pause-icon {
+            width: 32px;
+            height: 36px;
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .pause-bar {
+            width: 10px;
+            height: 100%;
+            background: white;
+            border-radius: 3px;
+        }
+        
+        
+        .status {
+            font-size: 13px;
+            opacity: 0.8;
+            margin-top: 20px;
+            text-align: center;
+            font-weight: 300;
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 25px;
+            font-size: 11px;
+            opacity: 0.6;
+            font-weight: 300;
+        }
+        
+        .organization {
+            font-size: 10px;
+            opacity: 0.5;
+            margin-top: 5px;
+            line-height: 1.3;
+        }
+        
+        .loading {
+            opacity: 0.6;
+        }
+        
+        .debug-info {
+            display: none;
+        }
+
+        /* Анимация появления */
+        .fade-in {
+            animation: fadeIn 0.8s ease-in;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        /* Стили для истории треков */
+        .track-history {
+            background: rgba(255,255,255,0.05);
+            border-radius: 16px;
+            padding: 15px;
+            margin-top: 20px;
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+        
+        .track-history.expanded {
+            max-height: 150px;
+        }
+        
+        .history-title {
+            font-size: 12px;
+            opacity: 0.7;
+            margin-bottom: 10px;
+            font-weight: 500;
+        }
+        
+        .history-item {
+            font-size: 11px;
+            padding: 6px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            display: flex;
+            justify-content: between;
+        }
+        
+        .history-item:last-child {
+            border-bottom: none;
+        }
+        
+        .history-track {
+            flex: 1;
+        }
+        
+        .history-time {
+            opacity: 0.5;
+            font-size: 10px;
+        }
+    </style>
 </head>
 <body>
-<div class="container">
-    <div class="logo-section">
-        <div class="logo">МИР</div>
-        <div class="slogan">Все включено!</div>
+    <div class="container fade-in">
+        
+        <div class="logo-section">
+            <div class="logo">МИР</div>
+            <div class="slogan">Все включено!</div>
+        </div>
+        
+        <div class="player-card">
+            <div class="now-playing">
+                <div class="station-info">
+                    <div class="station-badge">ЭФИР</div>
+                    <div class="live-indicator">
+                        <div class="live-dot"></div>
+                        <span>LIVE</span>
+                    </div>
+                </div>
+                <div class="song-title" id="currentSong">Загрузка эфира...</div>
+                <div class="song-artist" id="currentArtist">Радио МИР</div>
+            </div>
+            
+            <div class="player-controls">
+                <button class="play-btn" onclick="togglePlay()" id="playBtn">
+                    <div class="play-icon" id="playIcon"></div>
+                </button>
+            </div>
+            
+            <div class="status" id="status">Подключение к эфиру...</div>
+            
+            <div class="track-history" id="trackHistory">
+                <div class="history-title">Недавно звучало:</div>
+                <div id="historyList"></div>
+            </div>
+        </div>
+        
+        <div class="footer">
+        
+            <div class="organization">
+                Межгосударственная телерадиокомпания «МИР»<br>
+                Республика Беларусь
+            </div>
+        </div>
+        
+        <audio id="audioPlayer" preload="none"></audio>
     </div>
 
-    <div class="player-card">
-        <div class="now-playing">
-            <div class="song-title" id="currentSong">Загрузка эфира...</div>
-            <div class="song-artist" id="currentArtist">Радио МИР</div>
-        </div>
-        <div class="player-controls">
-            <button class="play-btn" onclick="togglePlay()" id="playBtn">
-                <div class="play-icon" id="playIcon"></div>
-            </button>
-        </div>
-        <div class="status" id="status">Подключение к эфиру...</div>
-        <div class="track-history" id="trackHistory">
-            <div class="history-title">Недавно звучало:</div>
-            <div id="historyList"></div>
-        </div>
-    </div>
+    <script>
+        const tg = window.Telegram.WebApp;
+        const audio = document.getElementById('audioPlayer');
+        const playBtn = document.getElementById('playBtn');
+        const playIcon = document.getElementById('playIcon');
+        
+        // Поток радио МИР
+        const STREAM_URL = 'https://media1.datacenter.by:1936/radiomir/radiomir/playlist.m3u8';
+        
+        let hls;
+        let isPlaying = false;
+        let currentMetadata = {};
+        let lastMetadata = '';
+        let trackHistory = [];
 
-    <audio id="audioPlayer" preload="none"></audio>
-</div>
+        // Инициализация Telegram Web App
+        tg.expand();
+        tg.enableClosingConfirmation();
 
-<script>
-const audio = document.getElementById('audioPlayer');
-const playBtn = document.getElementById('playBtn');
-const playIcon = document.getElementById('playIcon');
-const STREAM_URL = 'https://media1.datacenter.by:1936/radiomir/radiomir/playlist.m3u8';
-let hls;
-let isPlaying = false;
-let currentMetadata = {title:'', artist:''};
-let lastMetadata = '';
-let trackHistory = [];
-
-// HLS инициализация
-function initHLS() {
-    if (Hls.isSupported()) {
-        hls = new Hls();
-        hls.loadSource(STREAM_URL);
-        hls.attachMedia(audio);
-        hls.on(Hls.Events.MANIFEST_PARSED, () => { updateStatus('Эфир подключен'); });
-        hls.on(Hls.Events.FRAG_PARSING_METADATA, (event,data)=>{ parseMetadata(data); });
-        hls.on(Hls.Events.ERROR, (event,data)=>{ console.error('HLS Error', data); updateStatus('Ошибка эфира'); });
-    } else if(audio.canPlayType('application/vnd.apple.mpegurl')) {
-        audio.src = STREAM_URL;
-        updateStatus('Подключение к эфиру...');
-    } else { updateStatus('Браузер не поддерживает HLS'); }
-}
-
-// Парсинг любых метаданных
-function parseMetadata(data) {
-    if(!data.samples) return;
-    data.samples.forEach(s=>{
-        if(s.type==='ID3') {
-            const textDecoder = new TextDecoder('utf-8');
-            const arr = new Uint8Array(s.data);
-            const str = textDecoder.decode(arr).trim().replace(/\0/g,'');
-            // Любой формат "Артист - Трек"
-            if(str.includes(' - ')){
-                const parts = str.split(' - ');
-                currentMetadata.artist = parts[0].trim();
-                currentMetadata.title = parts[1].trim();
-            } else { currentMetadata.title = str; currentMetadata.artist = 'Радио МИР'; }
-            updateTrackDisplay();
+        function initHLS() {
+            if (Hls.isSupported()) {
+                hls = new Hls({
+                    enableWorker: false,
+                    lowLatencyMode: true,
+                    backBufferLength: 90,
+                    debug: false
+                });
+                
+                hls.loadSource(STREAM_URL);
+                hls.attachMedia(audio);
+                
+                hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                    updateStatus('Эфир подключен');
+                    startMetadataMonitoring();
+                });
+                
+                // Слушаем метаданные
+                hls.on(Hls.Events.FRAG_PARSING_METADATA, function(event, data) {
+                    if (data.samples) {
+                        parseID3Metadata(data.samples);
+                    }
+                });
+                
+                hls.on(Hls.Events.ERROR, function(event, data) {
+                    console.error('HLS Error:', data);
+                    if (data.fatal) {
+                        switch(data.type) {
+                            case Hls.ErrorTypes.NETWORK_ERROR:
+                                updateStatus('Ошибка сети. Переподключение...');
+                                hls.startLoad();
+                                break;
+                            case Hls.ErrorTypes.MEDIA_ERROR:
+                                updateStatus('Ошибка медиа. Перезагрузка...');
+                                hls.recoverMediaError();
+                                break;
+                            default:
+                                updateStatus('Ошибка подключения к эфиру');
+                                break;
+                        }
+                    }
+                });
+                
+            } else if (audio.canPlayType('application/vnd.apple.mpegurl')) {
+                // Для Safari
+                audio.src = STREAM_URL;
+                updateStatus('Подключение к эфиру...');
+                startFallbackMetadataMonitoring();
+            } else {
+                updateStatus('Браузер не поддерживает трансляцию');
+            }
         }
-    });
-}
 
-// Обновление отображения трека
-function updateTrackDisplay() {
-    const title = currentMetadata.title || 'Радио МИР';
-    const artist = currentMetadata.artist || 'Прямой эфир';
-    if(title+artist === lastMetadata) return;
-    lastMetadata = title+artist;
-    document.getElementById('currentSong').textContent = title;
-    document.getElementById('currentArtist').textContent = artist;
-    addToHistory(title,artist);
-    document.getElementById('trackHistory').classList.add('expanded');
-    updateStatus('В эфире: ' + title);
-}
+        function parseID3Metadata(samples) {
+            if (!samples || samples.length === 0) return;
+            
+            samples.forEach(sample => {
+                try {
+                    if (sample.type === 'ID3') {
+                        parseID3Data(sample.data);
+                    }
+                } catch (error) {
+                    console.warn('Error parsing ID3:', error);
+                }
+            });
+        }
 
-// История треков
-function addToHistory(title,artist){
-    const timestamp = new Date().toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
-    if(trackHistory[0] && trackHistory[0].title===title && trackHistory[0].artist===artist) return;
-    trackHistory.unshift({title,artist,timestamp,id:Date.now()});
-    if(trackHistory.length>5) trackHistory = trackHistory.slice(0,5);
-    updateHistoryDisplay();
-}
+        function parseID3Data(data) {
+            try {
+                const dataView = new DataView(data);
+                if (dataView.getUint16(0) !== 0x4944) return;
+                
+                let offset = 10;
+                while (offset < dataView.byteLength - 10) {
+                    const frameId = String.fromCharCode(
+                        dataView.getUint8(offset),
+                        dataView.getUint8(offset + 1),
+                        dataView.getUint8(offset + 2),
+                        dataView.getUint8(offset + 3)
+                    );
+                    
+                    const size = dataView.getUint32(offset + 4);
+                    offset += 10;
+                    
+                    if (size === 0) break;
+                    
+                    try {
+                        const textDecoder = new TextDecoder('utf-8');
+                        const frameData = textDecoder.decode(
+                            new DataView(dataView.buffer, offset, size)
+                        ).trim().replace(/\0/g, '');
+                        
+                        processID3Frame(frameId, frameData);
+                        
+                    } catch (error) {
+                        console.warn('Error decoding frame:', error);
+                    }
+                    
+                    offset += size;
+                }
+            } catch (error) {
+                console.warn('Error parsing ID3 data:', error);
+            }
+        }
 
-function updateHistoryDisplay(){
-    document.getElementById('historyList').innerHTML = trackHistory.map(t=>`
-        <div class="history-item">
-            <div class="history-track"><strong>${t.title}</strong> - ${t.artist}</div>
-            <div class="history-time">${t.timestamp}</div>
-        </div>
-    `).join('');
-}
+        function processID3Frame(frameId, frameData) {
+            if (!frameData) return;
+            
+            switch(frameId) {
+                case 'TIT2': // Название трека
+                    if (frameData && frameData !== currentMetadata.title) {
+                        currentMetadata.title = frameData;
+                        updateTrackDisplay();
+                    }
+                    break;
+                case 'TPE1': // Исполнитель
+                    if (frameData && frameData !== currentMetadata.artist) {
+                        currentMetadata.artist = frameData;
+                        updateTrackDisplay();
+                    }
+                    break;
+                case 'COMM': // Комментарий
+                    parseCommentMetadata(frameData);
+                    break;
+                default:
+                    if (frameData.includes(' - ')) {
+                        parseGenericMetadata(frameData);
+                    }
+                    break;
+            }
+        }
 
-// Play/Pause
-function togglePlay(){
-    if(!hls && !audio.src){ initHLS(); return; }
-    if(isPlaying){ audio.pause(); showPlayIcon(); updateStatus('Пауза'); }
-    else{ audio.play().then(()=>{ showPauseIcon(); updateStatus('Слушаем эфир...'); }).catch(()=>updateStatus('Ошибка воспроизведения')); }
-    isPlaying = !isPlaying;
-}
+        function parseCommentMetadata(text) {
+            const patterns = [
+                /(.+?)\s*-\s*(.+)/,
+                /(.+?)\s*\|\s*(.+)/
+            ];
+            
+            for (let pattern of patterns) {
+                const match = text.match(pattern);
+                if (match) {
+                    const artist = match[1].trim();
+                    const title = match[2].trim();
+                    
+                    if (artist && title && artist.length < 50 && title.length < 50) {
+                        currentMetadata.artist = artist;
+                        currentMetadata.title = title;
+                        updateTrackDisplay();
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
 
-function showPlayIcon(){ playIcon.className='play-icon'; playIcon.innerHTML=''; }
-function showPauseIcon(){ playIcon.className='pause-icon'; playIcon.innerHTML='<div class="pause-bar"></div><div class="pause-bar"></div>'; }
-function updateStatus(msg){ document.getElementById('status').textContent = msg; }
+        function parseGenericMetadata(text) {
+            if (text.includes(' - ')) {
+                const parts = text.split(' - ');
+                if (parts.length === 2) {
+                    const part1 = parts[0].trim();
+                    const part2 = parts[1].trim();
+                    
+                    if (part1.length < part2.length) {
+                        currentMetadata.artist = part1;
+                        currentMetadata.title = part2;
+                    } else {
+                        currentMetadata.artist = part2;
+                        currentMetadata.title = part1;
+                    }
+                    updateTrackDisplay();
+                    return true;
+                }
+            }
+            return false;
+        }
 
-// Автозапуск
-document.addEventListener('DOMContentLoaded',()=>{ initHLS(); setVolume(60); });
-function setVolume(value){ audio.volume = value/100; }
-</script>
+        function updateTrackDisplay() {
+            if (!currentMetadata.title && !currentMetadata.artist) return;
+            
+            const title = currentMetadata.title || 'Радио МИР';
+            const artist = currentMetadata.artist || 'Прямой эфир';
+            
+            const currentMetadataString = title + artist;
+            if (currentMetadataString === lastMetadata) return;
+            
+            lastMetadata = currentMetadataString;
+            
+            const titleElement = document.getElementById('currentSong');
+            const artistElement = document.getElementById('currentArtist');
+            
+            titleElement.textContent = title;
+            artistElement.textContent = artist;
+            
+            // Анимация смены трека
+            titleElement.style.opacity = '0.5';
+            artistElement.style.opacity = '0.5';
+            
+            setTimeout(() => {
+                titleElement.style.opacity = '1';
+                artistElement.style.opacity = '1';
+            }, 300);
+            
+            updateStatus('В эфире: ' + title);
+            addToHistory(title, artist);
+            
+            // Показываем историю
+            document.getElementById('trackHistory').classList.add('expanded');
+        }
+
+        function addToHistory(title, artist) {
+            const timestamp = new Date().toLocaleTimeString('ru-RU', {
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            
+            // Проверяем, не тот ли это же трек
+            const lastTrack = trackHistory[0];
+            if (lastTrack && lastTrack.title === title && lastTrack.artist === artist) {
+                return;
+            }
+            
+            trackHistory.unshift({
+                title,
+                artist,
+                timestamp,
+                id: Date.now()
+            });
+            
+            // Ограничиваем историю 5 треками
+            if (trackHistory.length > 5) {
+                trackHistory = trackHistory.slice(0, 5);
+            }
+            
+            updateHistoryDisplay();
+        }
+
+        function updateHistoryDisplay() {
+            const historyList = document.getElementById('historyList');
+            
+            historyList.innerHTML = trackHistory.map(track => 
+                `<div class="history-item">
+                    <div class="history-track">
+                        <strong>${track.title}</strong> - ${track.artist}
+                    </div>
+                    <div class="history-time">${track.timestamp}</div>
+                </div>`
+            ).join('');
+        }
+
+        function startMetadataMonitoring() {
+            // Fallback мониторинг
+            setInterval(() => {
+                if (isPlaying && (!currentMetadata.title || !currentMetadata.artist)) {
+                    updateFallbackTrackInfo();
+                }
+            }, 30000);
+        }
+
+        function updateFallbackTrackInfo() {
+            const fallbackTracks = [
+                { title: "Новости мира", artist: "Радио МИР" },
+                { title: "Музыкальный эфир", artist: "Все включено!" },
+                { title: "Информационная программа", artist: "Межгосударственная ТРК МИР" }
+            ];
+            
+            if (!currentMetadata.title) {
+                const randomTrack = fallbackTracks[Math.floor(Math.random() * fallbackTracks.length)];
+                currentMetadata.title = randomTrack.title;
+                currentMetadata.artist = randomTrack.artist;
+                updateTrackDisplay();
+            }
+        }
+
+        function startFallbackMetadataMonitoring() {
+            setInterval(() => {
+                if (isPlaying) {
+                    updateFallbackTrackInfo();
+                }
+            }, 30000);
+        }
+
+        function togglePlay() {
+            if (!hls && !audio.src) {
+                initHLS();
+                updateStatus('Подключение...');
+                return;
+            }
+            
+            if (isPlaying) {
+                audio.pause();
+                showPlayIcon();
+                updateStatus('Пауза');
+            } else {
+                audio.play().then(() => {
+                    showPauseIcon();
+                    updateStatus('Слушаем эфир...');
+                }).catch(error => {
+                    console.error('Play failed:', error);
+                    updateStatus('Ошибка воспроизведения');
+                });
+            }
+            isPlaying = !isPlaying;
+        }
+
+        function showPlayIcon() {
+            playIcon.className = 'play-icon';
+            playIcon.innerHTML = '';
+        }
+
+        function showPauseIcon() {
+            playIcon.className = 'pause-icon';
+            playIcon.innerHTML = '<div class="pause-bar"></div><div class="pause-bar"></div>';
+        }
+
+        function setVolume(value) {
+            audio.volume = value / 100;
+        }
+
+        function updateStatus(message) {
+            document.getElementById('status').textContent = message;
+        }
+
+        function closeApp() {
+            if (hls) {
+                hls.destroy();
+            }
+            audio.pause();
+            tg.close();
+        }
+
+        // Обработчики событий аудио
+        audio.addEventListener('play', () => {
+            showPauseIcon();
+            isPlaying = true;
+            updateStatus('Эфир онлайн');
+        });
+
+        audio.addEventListener('pause', () => {
+            showPlayIcon();
+            isPlaying = false;
+            updateStatus('Пауза');
+        });
+
+        audio.addEventListener('waiting', () => {
+            updateStatus('Буферизация...');
+        });
+
+        audio.addEventListener('playing', () => {
+            updateStatus('Эфир онлайн');
+        });
+
+        // Инициализация
+        setVolume(60);
+
+        // Автоматическая инициализация
+        document.addEventListener('DOMContentLoaded', function() {
+            initHLS();
+        });
+
+    </script>
 </body>
 </html>
