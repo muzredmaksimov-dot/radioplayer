@@ -1,6 +1,7 @@
 {
-  "track": "Название трека",
+  "track": "head - ssr lang=\"ru\" data",
   "artist": "Прямой эфир",
-  "source": "parser",
-  "timestamp": "2025-12-03T16:30:00.000000"
+  "source": "dash_format",
+  "timestamp": "2025-12-03T15:52:17.622470",
+  "updated_at": "2025-12-03 15:52:17"
 }
