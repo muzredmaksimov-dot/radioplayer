@@ -199,7 +199,6 @@
             line-height: 1.3;
         }
         
-        /* Анимация появления */
         .fade-in {
             animation: fadeIn 0.8s ease-in;
         }
@@ -209,7 +208,6 @@
             to { opacity: 1; transform: translateY(0); }
         }
         
-        /* Стили для истории треков */
         .track-history {
             background: rgba(255,255,255,0.05);
             border-radius: 16px;
@@ -221,7 +219,8 @@
         }
         
         .track-history.expanded {
-            max-height: 150px;
+            max-height: 200px;
+            overflow-y: auto;
         }
         
         .history-title {
@@ -229,6 +228,25 @@
             opacity: 0.7;
             margin-bottom: 10px;
             font-weight: 500;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .clear-history {
+            background: rgba(255,255,255,0.1);
+            border: none;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 10px;
+            cursor: pointer;
+            opacity: 0.6;
+            transition: opacity 0.3s;
+        }
+        
+        .clear-history:hover {
+            opacity: 1;
         }
         
         .history-item {
@@ -255,7 +273,6 @@
             text-align: right;
         }
 
-        /* Анимация смены трека */
         .track-change {
             animation: trackChange 0.5s ease;
         }
@@ -265,26 +282,58 @@
             100% { opacity: 1; transform: translateX(0); }
         }
         
-        /* Индикатор обновления метаданных */
-        .metadata-updating {
-            position: relative;
+        .volume-control {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 15px;
+            opacity: 0.7;
         }
         
-        .metadata-updating::after {
-            content: '';
-            position: absolute;
-            top: 50%;
-            right: -20px;
-            width: 8px;
-            height: 8px;
-            background: #4caf50;
+        .volume-slider {
+            width: 80px;
+            height: 4px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 2px;
+            outline: none;
+            -webkit-appearance: none;
+        }
+        
+        .volume-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 12px;
+            height: 12px;
+            background: #2196f3;
             border-radius: 50%;
-            animation: blink 1s infinite;
+            cursor: pointer;
         }
         
-        @keyframes blink {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.3; }
+        .error-message {
+            background: rgba(255,87,87,0.2);
+            border: 1px solid rgba(255,87,87,0.3);
+            border-radius: 10px;
+            padding: 10px;
+            font-size: 12px;
+            margin-top: 10px;
+            text-align: center;
+            animation: fadeIn 0.3s ease;
+        }
+        
+        .retry-btn {
+            background: rgba(33,150,243,0.3);
+            border: 1px solid rgba(33,150,243,0.5);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 8px;
+            font-size: 11px;
+            cursor: pointer;
+            margin-top: 5px;
+            transition: background 0.3s;
+        }
+        
+        .retry-btn:hover {
+            background: rgba(33,150,243,0.5);
         }
     </style>
 </head>
@@ -306,7 +355,7 @@
                     </div>
                 </div>
                 <div class="song-title" id="currentSong">Радио МИР</div>
-                <div class="song-artist" id="currentArtist">Обновление информации...</div>
+                <div class="song-artist" id="currentArtist">Загрузка информации...</div>
             </div>
             
             <div class="player-controls">
@@ -315,13 +364,23 @@
                 </button>
             </div>
             
-            <div class="status" id="status">
-                <span id="statusText">Подключение к эфиру...</span>
-                <span id="updateIndicator" style="display: none; font-size: 10px; opacity: 0.6;"> • Обновлено</span>
+            <div class="volume-control">
+                <span>🔊</span>
+                <input type="range" class="volume-slider" id="volumeSlider" 
+                       min="0" max="1" step="0.1" value="1"
+                       oninput="changeVolume(this.value)">
+                <span>🔈</span>
             </div>
             
+            <div class="status" id="status">Подключение к эфиру...</div>
+            
+            <div id="errorContainer"></div>
+            
             <div class="track-history" id="trackHistory">
-                <div class="history-title">Недавно звучало:</div>
+                <div class="history-title">
+                    <span>Недавно звучало:</span>
+                    <button class="clear-history" onclick="clearHistory()">Очистить</button>
+                </div>
                 <div id="historyList"></div>
             </div>
         </div>
@@ -341,52 +400,719 @@
         const audio = document.getElementById('audioPlayer');
         const playBtn = document.getElementById('playBtn');
         const playIcon = document.getElementById('playIcon');
+        const volumeSlider = document.getElementById('volumeSlider');
         
-        // Поток радио МИР
-        const STREAM_URL = 'https://media1.datacenter.by:1936/radiomir/radiomir/playlist.m3u8';
+        // Актуальный поток радио МИР (HLS)
+        const STREAM_URL = 'https://hls-01.radiomir.by/radiomir/playlist.m3u8';
         
-        // ВОТ ГЛАВНОЕ - список возможных URL для парсинга текущего трека
-        const METADATA_SOURCES = [
-            // Основные сайты радио МИР
-            {
-                name: 'Официальный сайт МИР',
-                url: 'https://mirtv.ru/',
-                type: 'html',
-                selector: '.current-track, .now-playing, [class*="track"], [class*="music"]',
-                parseFunction: parseMIRTV
-            },
-            {
-                name: 'Сайт радио МИР',
-                url: 'https://radiomir.by/',
-                type: 'html', 
-                selector: '.player-info, .current-song, .track-info',
-                parseFunction: parseGenericSite
-            },
-            // Альтернативные источники (если основные не работают)
-            {
-                name: 'API радиостанций',
-                url: 'https://api.radiopanel.co/api/v1/stations/radiomir',
-                type: 'json',
-                parseFunction: parseRadioAPI
-            },
-            {
-                name: 'Стриминговые сервисы',
-                url: 'https://tunein.com/radio/Radio-MIR-s225382/',
-                type: 'html',
-                selector: '.nowPlayingTitle, .trackName',
-                parseFunction: parseTuneIn
-            }
+        // Альтернативные потоки (на случай проблем с основным)
+        const BACKUP_STREAMS = [
+            'https://media1.datacenter.by:1936/radiomir/radiomir/playlist.m3u8',
+            'https://stream.radiomir.by:8443/radiomir'
         ];
         
-        // CORS прокси (бесплатные варианты)
-        const CORS_PROXIES = [
-            'https://corsproxy.io/?',
-            'https://api.allorigins.win/raw?url=',
-            'https://thingproxy.freeboard.io/fetch/',
-            'https://cors-anywhere.herokuapp.com/'
-        ];
+        // Сайт для получения метаданных
+        const METADATA_URL = 'https://radiomir.by/live';
         
-        let hls;
+        let hls = null;
         let isPlaying = false;
+        let currentStreamIndex = 0;
         let currentMetadata = { 
-            title: 'Радио М
+            title: 'Радио МИР', 
+            artist: 'Прямой эфир' 
+        };
+        let trackHistory = JSON.parse(localStorage.getItem('radioMirHistory')) || [];
+        let metadataUpdateInterval;
+        let lastParsedTrack = '';
+        let errorCount = 0;
+        const MAX_ERRORS = 3;
+
+        // Инициализация Telegram Web App
+        tg.expand();
+        tg.setHeaderColor('#1a237e');
+        tg.setBackgroundColor('#1a237e');
+
+        // Инициализация
+        function init() {
+            console.log('🎵 Инициализация радио МИР...');
+            
+            // Восстанавливаем громкость из localStorage
+            const savedVolume = localStorage.getItem('radioMirVolume');
+            if (savedVolume) {
+                audio.volume = parseFloat(savedVolume);
+                volumeSlider.value = savedVolume;
+            }
+            
+            // Восстанавливаем историю треков
+            updateHistoryDisplay();
+            
+            // Инициализируем поток
+            initHLS();
+            
+            // Запускаем мониторинг метаданных
+            setTimeout(startMetadataMonitoring, 1000);
+        }
+
+        function initHLS(streamUrl = STREAM_URL) {
+            console.log(`🔗 Подключение к потоку: ${streamUrl}`);
+            updateStatus('Подключение к эфиру...');
+            
+            if (hls) {
+                hls.destroy();
+                hls = null;
+            }
+            
+            audio.pause();
+            showPlayIcon();
+            isPlaying = false;
+            
+            if (Hls.isSupported()) {
+                hls = new Hls({
+                    enableWorker: true,
+                    lowLatencyMode: true,
+                    backBufferLength: 30,
+                    maxBufferLength: 30,
+                    maxMaxBufferLength: 60,
+                    liveSyncDurationCount: 3,
+                    liveMaxLatencyDurationCount: 10
+                });
+                
+                hls.loadSource(streamUrl);
+                hls.attachMedia(audio);
+                
+                hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                    console.log('✅ Поток подключен');
+                    errorCount = 0;
+                    updateStatus('Эфир готов - нажмите PLAY');
+                });
+                
+                hls.on(Hls.Events.ERROR, function(event, data) {
+                    console.error('HLS Error:', data);
+                    
+                    if (data.fatal) {
+                        switch(data.type) {
+                            case Hls.ErrorTypes.NETWORK_ERROR:
+                                console.log('🔄 Пробуем восстановить подключение...');
+                                hls.startLoad();
+                                break;
+                            case Hls.ErrorTypes.MEDIA_ERROR:
+                                console.log('🔄 Перезагружаем медиа...');
+                                hls.recoverMediaError();
+                                break;
+                            default:
+                                handleStreamError('Ошибка подключения к эфиру');
+                                break;
+                        }
+                    }
+                });
+                
+            } else if (audio.canPlayType('application/vnd.apple.mpegurl')) {
+                // Для Safari
+                audio.src = streamUrl;
+                console.log('✅ Safari HLS подключен');
+                updateStatus('Эфир готов - нажмите PLAY');
+            } else {
+                handleStreamError('Браузер не поддерживает трансляцию');
+            }
+        }
+
+        function handleStreamError(message) {
+            console.error('❌ Ошибка потока:', message);
+            errorCount++;
+            
+            if (errorCount >= MAX_ERRORS) {
+                showError(`Не удалось подключиться к эфиру. Попробуйте перезагрузить приложение.`);
+                return;
+            }
+            
+            // Пробуем следующий backup поток
+            currentStreamIndex = (currentStreamIndex + 1) % BACKUP_STREAMS.length;
+            const nextStream = BACKUP_STREAMS[currentStreamIndex];
+            
+            showError(`${message}. Пробуем альтернативный поток...`);
+            
+            setTimeout(() => {
+                initHLS(nextStream);
+                hideError();
+            }, 2000);
+        }
+
+        function showError(message) {
+            const errorContainer = document.getElementById('errorContainer');
+            errorContainer.innerHTML = `
+                <div class="error-message">
+                    ${message}
+                    <button class="retry-btn" onclick="retryConnection()">Повторить</button>
+                </div>
+            `;
+        }
+
+        function hideError() {
+            const errorContainer = document.getElementById('errorContainer');
+            errorContainer.innerHTML = '';
+        }
+
+        function retryConnection() {
+            hideError();
+            errorCount = 0;
+            initHLS();
+        }
+
+        function startMetadataMonitoring() {
+            console.log('🔍 Запуск мониторинга метаданных...');
+            
+            // Получаем метаданные сразу
+            fetchCurrentTrack();
+            
+            // Обновляем каждые 10 секунд
+            metadataUpdateInterval = setInterval(fetchCurrentTrack, 10000);
+        }
+
+        async function fetchCurrentTrack() {
+            if (navigator.onLine === false) {
+                updateStatus('Нет подключения к интернету');
+                return;
+            }
+            
+            try {
+                console.log('🔄 Запрос метаданных...');
+                updateStatus('Обновление информации...');
+                
+                // Используем API AllOrigins для обхода CORS
+                const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(METADATA_URL)}&callback=?`;
+                
+                const response = await fetch(proxyUrl, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    },
+                    timeout: 8000
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const data = await response.json();
+                const html = data.contents;
+                
+                if (!html || html.length < 100) {
+                    throw new Error('Пустой ответ от сервера');
+                }
+                
+                console.log('✅ Получены данные, длина:', html.length, 'символов');
+                parseMetadata(html);
+                
+            } catch (error) {
+                console.warn('⚠️ Ошибка при получении метаданных:', error.message);
+                
+                // Пробуем альтернативный метод
+                tryAlternativeMetadataParse();
+            }
+        }
+
+        function parseMetadata(html) {
+            console.log('🔍 Парсинг метаданных...');
+            
+            // Метод 1: Ищем в плеере Radio Mir (по структуре из вашего HTML)
+            const playerRegex = /<span[^>]*class="[^"]*fz-16[^"]*"[^>]*>([^<]+)<\/span>[^<]*<span[^>]*class="[^"]*fz-14[^"]*"[^>]*>([^<]+)<\/span>/i;
+            const playerMatch = html.match(playerRegex);
+            
+            if (playerMatch && playerMatch[1] && playerMatch[2]) {
+                const artist = cleanText(playerMatch[1].trim());
+                const title = cleanText(playerMatch[2].trim());
+                
+                if (artist && title && !artist.includes('undefined') && !title.includes('undefined')) {
+                    updateTrackInfo(title, artist);
+                    return true;
+                }
+            }
+            
+            // Метод 2: Ищем JSON данные
+            const jsonRegex = /{"artist_name":"([^"]+)","track_name":"([^"]+)"/i;
+            const jsonMatch = html.match(jsonRegex);
+            
+            if (jsonMatch && jsonMatch[1] && jsonMatch[2]) {
+                const artist = cleanText(jsonMatch[1].trim());
+                const title = cleanText(jsonMatch[2].trim());
+                
+                if (artist && title) {
+                    updateTrackInfo(title, artist);
+                    return true;
+                }
+            }
+            
+            // Метод 3: Ищем другие форматы JSON
+            const jsonPatterns = [
+                /"artist"\s*:\s*"([^"]+)"[^}]+"title"\s*:\s*"([^"]+)"/i,
+                /"artist"\s*:\s*"([^"]+)"[^}]+"song"\s*:\s*"([^"]+)"/i,
+                /"performer"\s*:\s*"([^"]+)"[^}]+"name"\s*:\s*"([^"]+)"/i
+            ];
+            
+            for (const pattern of jsonPatterns) {
+                const match = html.match(pattern);
+                if (match && match[1] && match[2]) {
+                    const artist = cleanText(match[1].trim());
+                    const title = cleanText(match[2].trim());
+                    
+                    if (artist && title) {
+                        updateTrackInfo(title, artist);
+                        return true;
+                    }
+                }
+            }
+            
+            // Метод 4: Ищем в тексте страницы
+            const textPatterns = [
+                /Сейчас в эфире[:\s]*([^<—]+?)\s*[—–-]\s*([^<]+)/i,
+                /Now playing[:\s]*([^<—]+?)\s*[—–-]\s*([^<]+)/i,
+                /currentTrack\s*=\s*["']([^"']+?)\s*[—–-]\s*([^"']+)["']/i,
+                /Сейчас играет[:\s]*([^<]+)/i
+            ];
+            
+            for (const pattern of textPatterns) {
+                const match = html.match(pattern);
+                if (match) {
+                    if (match[1] && match[2]) {
+                        // Формат "Исполнитель - Трек"
+                        let artist = cleanText(match[1].trim());
+                        let title = cleanText(match[2].trim());
+                        
+                        // Иногда порядок обратный
+                        if (title.length < artist.length) {
+                            [artist, title] = [title, artist];
+                        }
+                        
+                        if (artist && title) {
+                            updateTrackInfo(title, artist);
+                            return true;
+                        }
+                    } else if (match[1]) {
+                        // Просто текст, пытаемся распарсить
+                        const text = cleanText(match[1].trim());
+                        const parts = text.split(/[—–-]/);
+                        
+                        if (parts.length >= 2) {
+                            let artist = parts[0].trim();
+                            let title = parts.slice(1).join(' ').trim();
+                            
+                            if (artist && title) {
+                                updateTrackInfo(title, artist);
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            console.log('⚠️ Метаданные не найдены');
+            updateStatus('Эфир онлайн');
+            return false;
+        }
+
+        async function tryAlternativeMetadataParse() {
+            try {
+                console.log('🔄 Пробуем альтернативный метод парсинга...');
+                
+                // Создаем iframe для доступа к странице
+                const iframe = document.createElement('iframe');
+                iframe.style.display = 'none';
+                iframe.srcdoc = `
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <script>
+                            function extractMetadata() {
+                                // Ждем загрузки страницы
+                                setTimeout(() => {
+                                    const iframeDoc = document.querySelector('iframe')?.contentDocument;
+                                    if (!iframeDoc) {
+                                        window.parent.postMessage({type: 'metadataError', error: 'No iframe'}, '*');
+                                        return;
+                                    }
+                                    
+                                    // Ищем метаданные разными способами
+                                    let metadata = null;
+                                    
+                                    // 1. В плеере
+                                    const playerSpans = iframeDoc.querySelectorAll('.CommonPleer span, .player span');
+                                    if (playerSpans.length >= 2) {
+                                        const artist = playerSpans[0]?.textContent?.trim();
+                                        const title = playerSpans[1]?.textContent?.trim();
+                                        if (artist && title) {
+                                            metadata = {artist, title};
+                                        }
+                                    }
+                                    
+                                    // 2. В тексте страницы
+                                    if (!metadata) {
+                                        const bodyText = iframeDoc.body.innerText;
+                                        const patterns = [
+                                            /([^—–-]+)[—–-]\s*([^—–-]+)/,
+                                            /Сейчас играет[:\s]+(.+?)\s*[-—–]\s*(.+?)(?:\n|$)/i
+                                        ];
+                                        
+                                        for (const pattern of patterns) {
+                                            const match = bodyText.match(pattern);
+                                            if (match && match[1] && match[2]) {
+                                                metadata = {
+                                                    artist: match[1].trim(),
+                                                    title: match[2].trim()
+                                                };
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    
+                                    window.parent.postMessage({
+                                        type: 'metadataResult',
+                                        data: metadata
+                                    }, '*');
+                                    
+                                }, 3000);
+                            }
+                            
+                            window.onload = extractMetadata;
+                        </script>
+                    </head>
+                    <body>
+                        <iframe src="${METADATA_URL}" 
+                                style="width:1px;height:1px;border:none;position:absolute;"
+                                onload="extractMetadata()"></iframe>
+                    </body>
+                    </html>
+                `;
+                
+                // Обработчик сообщений от iframe
+                const messageHandler = (event) => {
+                    if (event.data.type === 'metadataResult' && event.data.data) {
+                        const { artist, title } = event.data.data;
+                        if (artist && title) {
+                            updateTrackInfo(title, artist);
+                        }
+                        document.body.removeChild(iframe);
+                        window.removeEventListener('message', messageHandler);
+                    } else if (event.data.type === 'metadataError') {
+                        console.log('Iframe error:', event.data.error);
+                        document.body.removeChild(iframe);
+                        window.removeEventListener('message', messageHandler);
+                    }
+                };
+                
+                window.addEventListener('message', messageHandler);
+                document.body.appendChild(iframe);
+                
+                // Таймаут
+                setTimeout(() => {
+                    if (document.body.contains(iframe)) {
+                        document.body.removeChild(iframe);
+                        window.removeEventListener('message', messageHandler);
+                    }
+                }, 10000);
+                
+            } catch (error) {
+                console.error('Ошибка в альтернативном методе:', error);
+            }
+        }
+
+        function cleanText(text) {
+            if (!text) return '';
+            return text
+                .replace(/^\s+|\s+$/g, '')
+                .replace(/\s+/g, ' ')
+                .replace(/["'\[\]{}()]/g, '')
+                .replace(/^[:—\-–\s]+|[:—\-–\s]+$/g, '')
+                .replace(/&amp;/g, '&')
+                .replace(/&lt;/g, '<')
+                .replace(/&gt;/g, '>')
+                .replace(/&quot;/g, '"')
+                .replace(/&#39;/g, "'")
+                .substring(0, 100)
+                .trim();
+        }
+
+        function updateTrackInfo(title, artist) {
+            // Проверяем валидность данных
+            if (!title || !artist || title === 'undefined' || artist === 'undefined') {
+                console.log('⚠️ Некорректные данные трека');
+                return;
+            }
+            
+            const trackString = `${title}|${artist}`;
+            
+            // Проверяем, не тот же ли это трек
+            if (trackString === lastParsedTrack) {
+                return;
+            }
+            
+            lastParsedTrack = trackString;
+            
+            // Обновляем текущие метаданные
+            currentMetadata.title = title;
+            currentMetadata.artist = artist;
+            
+            // Обновляем отображение
+            updateTrackDisplay();
+            
+            // Добавляем в историю
+            addToHistory(title, artist);
+            
+            console.log(`✅ Трек обновлен: "${title}" - "${artist}"`);
+            updateStatus('В эфире: ' + title);
+            
+            // Отправляем уведомление в Telegram Web App (если трек поменялся во время прослушивания)
+            if (isPlaying) {
+                showTrackNotification(title, artist);
+            }
+        }
+
+        function updateTrackDisplay() {
+            const titleElement = document.getElementById('currentSong');
+            const artistElement = document.getElementById('currentArtist');
+            
+            if (!titleElement || !artistElement) return;
+            
+            // Анимация смены трека
+            titleElement.classList.add('track-change');
+            artistElement.classList.add('track-change');
+            
+            setTimeout(() => {
+                titleElement.textContent = currentMetadata.title;
+                artistElement.textContent = currentMetadata.artist;
+                
+                setTimeout(() => {
+                    titleElement.classList.remove('track-change');
+                    artistElement.classList.remove('track-change');
+                }, 500);
+            }, 100);
+        }
+
+        function showTrackNotification(title, artist) {
+            // Простая анимация уведомления
+            const originalColor = document.querySelector('.song-title').style.color;
+            document.querySelector('.song-title').style.color = '#4CAF50';
+            
+            setTimeout(() => {
+                document.querySelector('.song-title').style.color = originalColor;
+            }, 1000);
+        }
+
+        function addToHistory(title, artist) {
+            const timestamp = new Date().toLocaleTimeString('ru-RU', {
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            
+            // Проверяем, не повторяется ли трек
+            const lastTrack = trackHistory[0];
+            if (lastTrack && lastTrack.title === title && lastTrack.artist === artist) {
+                lastTrack.timestamp = timestamp;
+                updateHistoryDisplay();
+                return;
+            }
+            
+            trackHistory.unshift({
+                title,
+                artist,
+                timestamp,
+                id: Date.now()
+            });
+            
+            // Ограничиваем историю 10 треками
+            if (trackHistory.length > 10) {
+                trackHistory = trackHistory.slice(0, 10);
+            }
+            
+            // Сохраняем в localStorage
+            localStorage.setItem('radioMirHistory', JSON.stringify(trackHistory));
+            
+            updateHistoryDisplay();
+        }
+
+        function updateHistoryDisplay() {
+            const historyList = document.getElementById('historyList');
+            const trackHistoryElement = document.getElementById('trackHistory');
+            
+            if (!historyList || !trackHistoryElement) return;
+            
+            if (trackHistory.length === 0) {
+                historyList.innerHTML = '<div style="opacity:0.5;font-size:11px;text-align:center;padding:10px;">История треков пуста</div>';
+                trackHistoryElement.classList.remove('expanded');
+                return;
+            }
+            
+            historyList.innerHTML = trackHistory.map(track => 
+                `<div class="history-item">
+                    <div class="history-track">
+                        <strong>${track.title}</strong> - ${track.artist}
+                    </div>
+                    <div class="history-time">${track.timestamp}</div>
+                </div>`
+            ).join('');
+            
+            // Показываем историю
+            trackHistoryElement.classList.add('expanded');
+        }
+
+        function clearHistory() {
+            if (confirm('Очистить историю треков?')) {
+                trackHistory = [];
+                localStorage.removeItem('radioMirHistory');
+                updateHistoryDisplay();
+            }
+        }
+
+        function togglePlay() {
+            if (!hls && !audio.src) {
+                initHLS();
+                updateStatus('Подключение...');
+                return;
+            }
+            
+            if (isPlaying) {
+                pauseAudio();
+            } else {
+                playAudio();
+            }
+        }
+
+        function playAudio() {
+            audio.play().then(() => {
+                isPlaying = true;
+                showPauseIcon();
+                updateStatus('Эфир онлайн');
+                console.log('▶️ Воспроизведение начато');
+            }).catch(error => {
+                console.error('❌ Ошибка воспроизведения:', error);
+                
+                if (error.name === 'NotAllowedError') {
+                    showError('Разрешите воспроизведение звука в браузере');
+                } else {
+                    showError('Ошибка воспроизведения');
+                }
+                
+                showPlayIcon();
+                isPlaying = false;
+            });
+        }
+
+        function pauseAudio() {
+            audio.pause();
+            isPlaying = false;
+            showPlayIcon();
+            updateStatus('Пауза');
+            console.log('⏸️ Воспроизведение приостановлено');
+        }
+
+        function showPlayIcon() {
+            playIcon.className = 'play-icon';
+            playIcon.innerHTML = '';
+        }
+
+        function showPauseIcon() {
+            playIcon.className = 'pause-icon';
+            playIcon.innerHTML = '<div class="pause-bar"></div><div class="pause-bar"></div>';
+        }
+
+        function changeVolume(value) {
+            const volume = parseFloat(value);
+            audio.volume = volume;
+            localStorage.setItem('radioMirVolume', volume);
+            
+            // Визуальная обратная связь
+            if (volume === 0) {
+                updateStatus('Звук выключен');
+            } else if (volume < 0.3) {
+                updateStatus('Тихий звук');
+            } else {
+                updateStatus('Эфир онлайн');
+            }
+        }
+
+        function updateStatus(message) {
+            const statusElement = document.getElementById('status');
+            if (statusElement) {
+                statusElement.textContent = message;
+            }
+        }
+
+        function stopMetadataMonitoring() {
+            if (metadataUpdateInterval) {
+                clearInterval(metadataUpdateInterval);
+                metadataUpdateInterval = null;
+                console.log('⏹️ Мониторинг метаданных остановлен');
+            }
+        }
+
+        function closeApp() {
+            if (hls) {
+                hls.destroy();
+                hls = null;
+            }
+            
+            stopMetadataMonitoring();
+            
+            if (audio) {
+                audio.pause();
+                audio.src = '';
+            }
+            
+            console.log('👋 Приложение закрыто');
+            
+            if (tg && tg.close) {
+                tg.close();
+            }
+        }
+
+        // Обработчики событий аудио
+        audio.addEventListener('play', () => {
+            showPauseIcon();
+            isPlaying = true;
+        });
+
+        audio.addEventListener('pause', () => {
+            showPlayIcon();
+            isPlaying = false;
+        });
+
+        audio.addEventListener('waiting', () => {
+            updateStatus('Буферизация...');
+        });
+
+        audio.addEventListener('playing', () => {
+            updateStatus('Эфир онлайн');
+        });
+
+        audio.addEventListener('error', (e) => {
+            console.error('Audio error:', e);
+            updateStatus('Ошибка аудио');
+        });
+
+        // Обработчик смены сети
+        window.addEventListener('online', () => {
+            console.log('🌐 Соединение восстановлено');
+            updateStatus('Подключение восстановлено');
+            
+            if (isPlaying && !audio.src) {
+                setTimeout(() => initHLS(), 1000);
+            }
+        });
+
+        window.addEventListener('offline', () => {
+            console.log('❌ Потеряно соединение');
+            updateStatus('Нет подключения к интернету');
+        });
+
+        // Инициализация при загрузке
+        document.addEventListener('DOMContentLoaded', init);
+
+        // Экспортируем функции для глобального доступа
+        window.togglePlay = togglePlay;
+        window.changeVolume = changeVolume;
+        window.clearHistory = clearHistory;
+        window.retryConnection = retryConnection;
+        window.closeApp = closeApp;
+
+    </script>
+</body>
+</html>
