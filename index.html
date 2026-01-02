@@ -5,7 +5,78 @@
   <title>Радио МИР Беларусь</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="style.css">
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #0b3c6d;
+      color: #fff;
+    }
+
+    header {
+      text-align: center;
+      padding: 16px;
+    }
+
+    .logo {
+      width: 140px;
+    }
+
+    .tagline {
+      opacity: 0.8;
+      font-size: 14px;
+    }
+
+    .player {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 16px;
+    }
+
+    .player button {
+      font-size: 22px;
+      padding: 12px;
+      border-radius: 50%;
+      border: none;
+      cursor: pointer;
+    }
+
+    section {
+      padding: 16px;
+    }
+
+    .track {
+      background: rgba(255,255,255,0.1);
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+
+    .vote-btn {
+      font-size: 18px;
+      padding: 6px 10px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    .vote-btn.disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+
+    .vote-btn.selected {
+      background: #1fa34a;
+      color: #fff;
+    }
+
+    .vote-info {
+      font-size: 12px;
+      opacity: 0.7;
+      margin-top: 6px;
+    }
+  </style>
 </head>
 <body>
 
