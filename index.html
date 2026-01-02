@@ -1,37 +1,18 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <title>Радио МИР Беларусь</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Радио МИР</title>
+  <link rel="stylesheet" href="./style.css?v=3">
 </head>
 <body>
 
-<header>
-  <img src="assets/logo.png" class="logo">
-  <p class="tagline">Всё включено</p>
-</header>
+<div class="container">
+  <h1>Радио МИР</h1>
+  <div class="play-btn">▶️ Слушать эфир</div>
+</div>
 
-<section class="player">
-  <button id="playBtn">▶️</button>
-  <div class="player-text">
-    <strong>Прямой эфир</strong><br>
-    Радио МИР Беларусь
-  </div>
-</section>
-
-<section class="now">
-  <h3>Сейчас в эфире</h3>
-  <p id="onAir"></p>
-</section>
-
-<section class="new">
-  <h3>Новинки эфира</h3>
-  <div id="tracks"></div>
-</section>
-
-<script src="app.js"></script>
+<script src="./app.js?v=3"></script>
 </body>
 </html>
