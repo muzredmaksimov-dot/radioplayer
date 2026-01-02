@@ -1,58 +1,37 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8">
   <title>Радио МИР Беларусь</title>
-
-  <!-- CSS -->
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<div class="app">
+<header>
+  <img src="assets/logo.png" class="logo">
+  <p class="tagline">Всё включено</p>
+</header>
 
-  <!-- ЛОГО -->
-  <div class="logo">
-    <img src="assets/logo.png" alt="Радио МИР">
-    <div class="slogan">Всё включено</div>
+<section class="player">
+  <button id="playBtn">▶️</button>
+  <div class="player-text">
+    <strong>Прямой эфир</strong><br>
+    Радио МИР Беларусь
   </div>
+</section>
 
-  <!-- ПРЯМОЙ ЭФИР -->
-  <div class="live-block">
-    <button class="play-btn" id="playBtn">
-      ▶️ Прямой эфир
-    </button>
-    <div class="station">Радио МИР Беларусь</div>
-  </div>
+<section class="now">
+  <h3>Сейчас в эфире</h3>
+  <p id="onAir"></p>
+</section>
 
-  <!-- СЕЙЧАС В ЭФИРЕ -->
-  <div class="now">
-    <h2>Сейчас в эфире</h2>
-    <div class="now-card">
-      <div class="now-title">Вечер без суеты</div>
-      <div class="now-host">с Женей Задорой</div>
-    </div>
-  </div>
+<section class="new">
+  <h3>Новинки эфира</h3>
+  <div id="tracks"></div>
+</section>
 
-  <!-- НОВИНКИ -->
-  <div class="new">
-    <h2>Новинки эфира</h2>
-    <div class="empty">
-      Скоро здесь можно будет голосовать за музыку 👍👎
-    </div>
-  </div>
-
-</div>
-
-<!-- АУДИО -->
-<audio
-  id="radio"
-  src="https://media1.datacenter.by:1936/radiomir/radiomir/playlist.m3u8"
-  playsinline
-></audio>
-
-<!-- JS -->
-<script src="./app.js?v=5"></script>
+<script src="app.js"></script>
 </body>
 </html>
