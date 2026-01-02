@@ -6,103 +6,536 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
-    body {
+    /* СТИЛИ */
+    * {
       margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
       font-family: Arial, sans-serif;
       background: #0b3c6d;
       color: #fff;
+      min-height: 100vh;
+      line-height: 1.5;
     }
-
+    
     header {
       text-align: center;
-      padding: 16px;
+      padding: 20px 16px 10px;
+      background: rgba(0, 0, 0, 0.2);
     }
-
+    
     .logo {
       width: 140px;
+      max-width: 80%;
+      height: auto;
     }
-
+    
     .tagline {
       opacity: 0.8;
       font-size: 14px;
+      margin-top: 5px;
     }
-
+    
+    section {
+      padding: 16px;
+    }
+    
+    h3 {
+      font-size: 18px;
+      margin-bottom: 12px;
+      color: #fff;
+    }
+    
+    /* Плеер */
     .player {
       display: flex;
       align-items: center;
       gap: 14px;
-      padding: 16px;
+      padding: 20px;
+      background: rgba(255, 255, 255, 0.05);
+      margin: 0 16px 16px;
+      border-radius: 12px;
     }
-
+    
     .player button {
       font-size: 22px;
-      padding: 12px;
+      padding: 14px;
+      width: 60px;
+      height: 60px;
       border-radius: 50%;
       border: none;
+      background: #1fa34a;
+      color: white;
       cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.3s;
     }
-
-    section {
+    
+    .player button:hover {
+      background: #178c3d;
+    }
+    
+    .player-text strong {
+      font-size: 17px;
+      display: block;
+      margin-bottom: 4px;
+    }
+    
+    /* Блок "Сейчас в эфире" */
+    #onAir {
+      background: rgba(255, 255, 255, 0.07);
       padding: 16px;
+      border-radius: 10px;
+      font-size: 16px;
+      min-height: 60px;
+      display: flex;
+      align-items: center;
+      border-left: 4px solid #1fa34a;
     }
-
+    
+    /* Треки */
     .track {
-      background: rgba(255,255,255,0.1);
+      background: rgba(255, 255, 255, 0.1);
       border-radius: 12px;
-      padding: 12px;
+      padding: 16px;
       margin-bottom: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
     }
-
-    .vote-btn {
-      font-size: 18px;
-      padding: 6px 10px;
+    
+    .track strong {
+      font-size: 16px;
+      display: block;
+      margin-bottom: 5px;
+    }
+    
+    .track button {
+      margin-right: 8px;
+      margin-top: 10px;
+      padding: 8px 12px;
       border: none;
-      border-radius: 8px;
+      border-radius: 6px;
       cursor: pointer;
+      font-size: 16px;
+      background: rgba(255, 255, 255, 0.15);
+      color: white;
+      transition: background 0.3s;
     }
-
+    
+    .track button:hover:not(.disabled) {
+      background: rgba(255, 255, 255, 0.25);
+    }
+    
     .vote-btn.disabled {
       opacity: 0.4;
       cursor: default;
     }
-
+    
     .vote-btn.selected {
-      background: #1fa34a;
-      color: #fff;
+      background: #1fa34a !important;
     }
-
+    
     .vote-info {
       font-size: 12px;
       opacity: 0.7;
-      margin-top: 6px;
+      margin-top: 10px;
+      color: #1fa34a;
+    }
+    
+    /* Адаптивность */
+    @media (max-width: 400px) {
+      .player {
+        flex-direction: column;
+        text-align: center;
+        gap: 10px;
+      }
+      
+      .player-text br {
+        display: none;
+      }
+      
+      .track button {
+        margin-right: 5px;
+        padding: 6px 10px;
+        font-size: 14px;
+      }
     }
   </style>
 </head>
 <body>
 
 <header>
-  <img src="assets/logo.png" class="logo">
+  <img src="https://via.placeholder.com/140x60/1fa34a/ffffff?text=RADIO+MIR" class="logo" alt="Логотип Радио МИР">
   <p class="tagline">Всё включено</p>
 </header>
 
 <section class="player">
   <button id="playBtn">▶️</button>
   <div class="player-text">
-    <strong>Прямой эфир</strong><br>
+    <strong>Прямой эфир</strong>
     Радио МИР Беларусь
   </div>
 </section>
 
 <section class="now">
   <h3>Сейчас в эфире</h3>
-  <p id="onAir"></p>
+  <div id="onAir"></div>
 </section>
 
 <section class="new">
   <h3>Новинки эфира</h3>
-  <div id="tracks"></div>
+  <div id="tracks">
+    <!-- Треки будут загружены здесь -->
+  </div>
 </section>
 
-<script src="app.js"></script>
+<script>
+  // ===== ОСНОВНОЙ КОД =====
+  
+  // Инициализация Telegram Web App
+  const tg = window.Telegram.WebApp;
+  tg.ready();
+  tg.expand(); // Развернуть на весь экран
+  
+  // ===== РАДИО ПЛЕЕР =====
+  const radioStream = new Audio();
+  radioStream.crossOrigin = "anonymous";
+  
+  // Используем работающий поток радио МИР Беларусь
+  const streams = [
+    "https://icecast.radiomir.by/radiomir",
+    "https://media1.datacenter.by:1936/radiomir/radiomir/playlist.m3u8",
+    "https://stream.radiomir.by/radiomir"
+  ];
+  
+  let currentStreamIndex = 0;
+  
+  const playBtn = document.getElementById("playBtn");
+  
+  function tryNextStream() {
+    if (currentStreamIndex >= streams.length) {
+      alert("Радио временно недоступно. Попробуйте позже.");
+      return;
+    }
+    
+    radioStream.src = streams[currentStreamIndex];
+    radioStream.play().catch(error => {
+      console.log("Ошибка потока", currentStreamIndex, error);
+      currentStreamIndex++;
+      tryNextStream();
+    });
+  }
+  
+  playBtn.onclick = () => {
+    if (radioStream.paused || radioStream.ended) {
+      tryNextStream();
+      playBtn.textContent = "⏸";
+      playBtn.style.background = "#ff4757";
+    } else {
+      radioStream.pause();
+      playBtn.textContent = "▶️";
+      playBtn.style.background = "#1fa34a";
+    }
+  };
+  
+  radioStream.addEventListener('playing', () => {
+    playBtn.textContent = "⏸";
+    playBtn.style.background = "#ff4757";
+  });
+  
+  radioStream.addEventListener('pause', () => {
+    playBtn.textContent = "▶️";
+    playBtn.style.background = "#1fa34a";
+  });
+  
+  radioStream.addEventListener('error', () => {
+    currentStreamIndex++;
+    if (!radioStream.paused) {
+      tryNextStream();
+    }
+  });
+  
+  // ===== СЕЙЧАС В ЭФИРЕ =====
+  function getOnAir() {
+    const h = new Date().getHours();
+    const day = new Date().getDay(); // 0 - воскресенье, 1 - понедельник
+    
+    const schedule = {
+      weekday: [
+        { time: "06:00-10:00", title: "Мировое утро", host: "Анна Петрова" },
+        { time: "10:00-12:00", title: "Музыкальный нон-стоп" },
+        { time: "12:00-16:00", title: "Все просто", host: "Катя Жаворонок" },
+        { time: "16:00-20:00", title: "Вечер без суеты", host: "Женя Задора" },
+        { time: "20:00-22:00", title: "Хит-парад МИР" },
+        { time: "22:00-06:00", title: "Ночная волна" }
+      ],
+      weekend: [
+        { time: "08:00-12:00", title: "Уикенд старт", host: "Дима Крутой" },
+        { time: "12:00-16:00", title: "Танцевальные хиты" },
+        { time: "16:00-20:00", title: "Ретро вечеринка" },
+        { time: "20:00-22:00", title: "Гостевой эфир" },
+        { time: "22:00-08:00", title: "Музыка для души" }
+      ]
+    };
+    
+    const todaySchedule = (day === 0 || day === 6) ? schedule.weekend : schedule.weekday;
+    
+    for (const show of todaySchedule) {
+      const [start, end] = show.time.split("-").map(t => parseInt(t.split(":")[0]));
+      if (h >= start && h < end) {
+        return show.host 
+          ? `${show.title} с ${show.host}`
+          : show.title;
+      }
+    }
+    
+    return "Музыкальный нон-стоп";
+  }
+  
+  function updateOnAir() {
+    const now = new Date();
+    const timeString = now.toLocaleTimeString('ru-RU', { 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    });
+    
+    document.getElementById("onAir").innerHTML = `
+      <div>
+        <div style="font-size: 18px; margin-bottom: 5px;">${getOnAir()}</div>
+        <div style="opacity: 0.8; font-size: 14px;">${timeString} • Прямой эфир</div>
+      </div>
+    `;
+  }
+  
+  // ===== НОВИНКИ И ГОЛОСОВАНИЕ =====
+  // Тестовые данные треков (в реальном приложении будут загружаться с сервера)
+  const tracks = [
+    {
+      id: 1,
+      artist: "Nizkiz",
+      title: "Верным быть",
+      audio: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+      likes: 42,
+      dislikes: 3
+    },
+    {
+      id: 2,
+      artist: "Ляпис Трубецкой",
+      title: "Воины света",
+      audio: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+      likes: 38,
+      dislikes: 5
+    },
+    {
+      id: 3,
+      artist: "IOWA",
+      title: "Улыбайся",
+      audio: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
+      likes: 56,
+      dislikes: 2
+    },
+    {
+      id: 4,
+      artist: "Би-2 feat. Чичерина",
+      title: "Мой рок-н-ролл",
+      audio: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3",
+      likes: 67,
+      dislikes: 1
+    }
+  ];
+  
+  let previewAudio = new Audio();
+  let votesCache = {};
+  
+  // Загрузка голосов из localStorage
+  function loadVotes() {
+    const saved = localStorage.getItem('radioMirVotes');
+    if (saved) {
+      votesCache = JSON.parse(saved);
+    }
+  }
+  
+  // Сохранение голосов в localStorage
+  function saveVotes() {
+    localStorage.setItem('radioMirVotes', JSON.stringify(votesCache));
+  }
+  
+  // Проверка, голосовал ли пользователь
+  function hasVoted(trackId) {
+    const userId = tg.initDataUnsafe?.user?.id || 'anonymous';
+    return votesCache[`${userId}_${trackId}`];
+  }
+  
+  // Воспроизведение превью трека
+  function playPreview(url) {
+    previewAudio.pause();
+    previewAudio = new Audio(url);
+    previewAudio.volume = 0.7;
+    previewAudio.play();
+  }
+  
+  // Загрузка и отображение треков
+  function loadTracks() {
+    const tracksContainer = document.getElementById("tracks");
+    const userId = tg.initDataUnsafe?.user?.id || null;
+    
+    tracksContainer.innerHTML = '';
+    
+    tracks.forEach(track => {
+      const voted = hasVoted(track.id);
+      const voteType = voted ? votesCache[`${userId}_${track.id}`] : null;
+      
+      const trackElement = document.createElement("div");
+      trackElement.className = "track";
+      trackElement.innerHTML = `
+        <strong>${track.artist}</strong>
+        <div style="opacity: 0.9; margin: 5px 0;">${track.title}</div>
+        
+        <div style="margin-top: 12px;">
+          <button onclick="playPreview('${track.audio}')" title="Прослушать">▶️ Превью</button>
+          
+          <button class="vote-btn ${voted ? 'disabled' : ''} ${voteType === 'like' ? 'selected' : ''}" 
+                  onclick="voteForTrack(${track.id}, 'like', this)"
+                  ${voted ? 'disabled' : ''}>
+            👍 ${track.likes}
+          </button>
+          
+          <button class="vote-btn ${voted ? 'disabled' : ''} ${voteType === 'dislike' ? 'selected' : ''}" 
+                  onclick="voteForTrack(${track.id}, 'dislike', this)"
+                  ${voted ? 'disabled' : ''}>
+            👎 ${track.dislikes}
+          </button>
+        </div>
+        
+        ${voted ? '<div class="vote-info">Вы уже проголосовали за этот трек</div>' : ''}
+      `;
+      
+      tracksContainer.appendChild(trackElement);
+    });
+  }
+  
+  // Голосование за трек
+  function voteForTrack(trackId, type, button) {
+    const user = tg.initDataUnsafe?.user;
+    
+    if (!user) {
+      tg.showAlert("Чтобы проголосовать, войдите через Telegram");
+      return;
+    }
+    
+    if (hasVoted(trackId)) {
+      tg.showAlert("Вы уже голосовали за этот трек");
+      return;
+    }
+    
+    // Отключаем все кнопки голосования для этого трека
+    const trackElement = button.closest('.track');
+    const voteButtons = trackElement.querySelectorAll('.vote-btn');
+    voteButtons.forEach(btn => {
+      btn.classList.add('disabled');
+      btn.disabled = true;
+    });
+    
+    // Помечаем выбранную кнопку
+    button.classList.add('selected');
+    
+    // Показываем сообщение
+    const voteInfo = document.createElement('div');
+    voteInfo.className = 'vote-info';
+    voteInfo.textContent = 'Спасибо за ваш голос!';
+    trackElement.appendChild(voteInfo);
+    
+    // Сохраняем голос
+    const userId = user.id;
+    votesCache[`${userId}_${trackId}`] = type;
+    saveVotes();
+    
+    // Отправляем голос на сервер (имитация)
+    console.log(`Голос: пользователь ${userId}, трек ${trackId}, оценка: ${type}`);
+    
+    // В реальном приложении здесь будет fetch запрос
+    // sendVoteToServer(userId, trackId, type);
+    
+    // Показываем всплывающее уведомление в Telegram
+    tg.showAlert("Ваш голос учтён! Спасибо за участие.");
+    
+    // Обновляем счетчик на кнопке
+    const countSpan = button.innerHTML.match(/\d+/);
+    if (countSpan) {
+      const currentCount = parseInt(countSpan[0]);
+      button.innerHTML = button.innerHTML.replace(/\d+/, currentCount + 1);
+    }
+    
+    // Вибрация (если поддерживается)
+    if (navigator.vibrate) {
+      navigator.vibrate(50);
+    }
+  }
+  
+  // ===== ИНИЦИАЛИЗАЦИЯ =====
+  function init() {
+    // Обновляем блок "Сейчас в эфире"
+    updateOnAir();
+    
+    // Загружаем голоса
+    loadVotes();
+    
+    // Загружаем треки
+    loadTracks();
+    
+    // Обновляем время каждую минуту
+    setInterval(updateOnAir, 60000);
+    
+    // Настройка Telegram Web App
+    tg.setHeaderColor('#0b3c6d');
+    tg.setBackgroundColor('#0b3c6d');
+    
+    // Показываем кнопку "Назад" если нужно
+    if (history.length > 1) {
+      tg.BackButton.show();
+      tg.BackButton.onClick(() => {
+        history.back();
+      });
+    }
+  }
+  
+  // Запуск при полной загрузке страницы
+  document.addEventListener('DOMContentLoaded', init);
+  
+  // Для отладки в браузере (без Telegram)
+  if (!window.Telegram) {
+    console.log("Запуск в браузере (без Telegram Web App)");
+    // Имитируем пользователя Telegram для тестирования
+    window.Telegram = {
+      WebApp: {
+        ready: () => console.log("Telegram Web App ready"),
+        expand: () => console.log("Telegram Web App expanded"),
+        showAlert: (msg) => alert(msg),
+        setHeaderColor: () => {},
+        setBackgroundColor: () => {},
+        BackButton: {
+          show: () => {},
+          hide: () => {},
+          onClick: () => {}
+        },
+        initDataUnsafe: {
+          user: {
+            id: 123456789,
+            first_name: "Тестовый",
+            last_name: "Пользователь"
+          }
+        }
+      }
+    };
+    
+    // Переинициализируем tg
+    window.tg = window.Telegram.WebApp;
+  }
+</script>
+
 </body>
 </html>
