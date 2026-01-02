@@ -3,16 +3,56 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Радио МИР</title>
-  <link rel="stylesheet" href="./style.css?v=3">
+  <title>Радио МИР Беларусь</title>
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="./style.css?v=5">
 </head>
 <body>
 
-<div class="container">
-  <h1>Радио МИР</h1>
-  <div class="play-btn">▶️ Слушать эфир</div>
+<div class="app">
+
+  <!-- ЛОГО -->
+  <div class="logo">
+    <img src="./assets/logo.png" alt="Радио МИР">
+    <div class="slogan">Всё включено</div>
+  </div>
+
+  <!-- ПРЯМОЙ ЭФИР -->
+  <div class="live-block">
+    <button class="play-btn" id="playBtn">
+      ▶️ Прямой эфир
+    </button>
+    <div class="station">Радио МИР Беларусь</div>
+  </div>
+
+  <!-- СЕЙЧАС В ЭФИРЕ -->
+  <div class="now">
+    <h2>Сейчас в эфире</h2>
+    <div class="now-card">
+      <div class="now-title">Вечер без суеты</div>
+      <div class="now-host">с Женей Задорой</div>
+    </div>
+  </div>
+
+  <!-- НОВИНКИ -->
+  <div class="new">
+    <h2>Новинки эфира</h2>
+    <div class="empty">
+      Скоро здесь можно будет голосовать за музыку 👍👎
+    </div>
+  </div>
+
 </div>
 
-<script src="./app.js?v=3"></script>
+<!-- АУДИО -->
+<audio
+  id="radio"
+  src="https://media1.datacenter.by:1936/radiomir/radiomir/playlist.m3u8"
+  playsinline
+></audio>
+
+<!-- JS -->
+<script src="./app.js?v=5"></script>
 </body>
 </html>
