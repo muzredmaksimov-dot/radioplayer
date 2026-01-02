@@ -1,26 +1,30 @@
-// Безопасное подключение Telegram WebApp
-const tg = window.Telegram?.WebApp;
+let tg = null;
 
-if (tg) {
+if (window.Telegram && window.Telegram.WebApp) {
+  tg = window.Telegram.WebApp;
   tg.expand();
   tg.ready();
-  console.log("Запущено внутри Telegram");
+  console.log("Telegram WebApp OK");
 } else {
-  console.log("Запущено вне Telegram");
+  console.log("Обычный браузер");
 }
 
-// Плеер
-const playBtn = document.getElementById("playBtn");
-const radio = document.getElementById("radio");
+document.addEventListener("DOMContentLoaded", () => {
+  const playBtn = document.getElementById("playBtn");
+  const radio = document.getElementById("radio");
 
-if (playBtn && radio) {
+  if (!playBtn || !radio) {
+    console.error("Кнопка или плеер не найдены");
+    return;
+  }
+
   playBtn.addEventListener("click", () => {
     radio.play()
       .then(() => {
         console.log("Эфир запущен");
       })
       .catch(err => {
-        console.log("Ошибка воспроизведения", err);
+        console.error("Ошибка воспроизведения", err);
       });
   });
-}
+});
