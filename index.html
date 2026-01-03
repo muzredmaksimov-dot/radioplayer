@@ -173,12 +173,27 @@ body {
   gap: 8px;
 }
 
-/* Секция новинок */
+/* Секция новинок - ФИКСИРОВАННАЯ */
+.tracks-section {
+  margin-top: 40px;
+  opacity: 1;
+  visibility: visible;
+  transition: all 0.3s ease;
+  pointer-events: auto;
+}
+
+/* Убираем любые эффекты скрытия */
+.tracks-section.hidden {
+  display: block !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
 .section-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin: 40px 0 20px;
+  margin-bottom: 20px;
 }
 
 .section-title {
@@ -354,6 +369,52 @@ body {
   animation: slideIn 0.3s ease;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
 }
+
+/* Индикатор загрузки */
+.loader {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 3px solid rgba(255,255,255,.3);
+  border-radius: 50%;
+  border-top-color: var(--primary);
+  animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Деактивация только при прослушивании превью */
+.preview-disabled {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* Индикатор текущего трека */
+.now-playing-indicator {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: var(--primary);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  animation: pulse 2s infinite;
+}
+
+/* Состояние прослушивания эфира */
+.stream-playing .track-card:not(.playing) {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+.stream-playing .preview-btn {
+  pointer-events: auto !important;
+  opacity: 1 !important;
+}
 </style>
 </head>
 
@@ -395,18 +456,42 @@ body {
     </div>
   </div>
 
-  <!-- Новинки -->
-  <div class="section-header">
-    <div class="section-title">
-      <i class="fas fa-fire"></i> НОВИНКИ ЭФИРА
+  <!-- Новинки - ВСЕГДА ВИДИМЫ -->
+  <div class="tracks-section" id="tracksSection">
+    <div class="section-header">
+      <div class="section-title">
+        <i class="fas fa-fire"></i> НОВИНКИ ЭФИРА
+      </div>
+      <div class="last-update" id="lastUpdate">
+        Обновлено сегодня
+      </div>
     </div>
-    <div class="last-update" id="lastUpdate">
-      Обновлено сегодня
-    </div>
-  </div>
 
-  <div class="tracks-grid" id="tracksContainer">
-    <!-- Треки будут загружаться здесь -->
+    <div class="tracks-grid" id="tracksContainer">
+      <!-- Треки будут загружаться здесь -->
+      <div class="track-card fade-in">
+        <div class="track-header">
+          <div class="track-artwork">
+            <i class="fas fa-music"></i>
+          </div>
+          <div class="track-info">
+            <div class="track-title">Загрузка треков...</div>
+            <div class="track-artist">Пожалуйста, подождите</div>
+          </div>
+        </div>
+        <div class="track-controls">
+          <button class="control-btn preview-btn" disabled>
+            <span class="loader"></span> Загрузка...
+          </button>
+          <button class="control-btn like-btn" disabled>
+            <i class="fas fa-thumbs-up"></i> 0
+          </button>
+          <button class="control-btn dislike-btn" disabled>
+            <i class="fas fa-thumbs-down"></i> 0
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <audio id="streamAudio"></audio>
@@ -431,6 +516,7 @@ let streamPlaying = false;
 let previewAudio = new Audio();
 let currentPreviewId = null;
 let userId = tg.initDataUnsafe?.user?.id || 'guest_' + Math.random().toString(36).substr(2, 9);
+let isLoadingTracks = false;
 
 // Инициализация
 document.addEventListener('DOMContentLoaded', async () => {
@@ -455,6 +541,7 @@ function initStream() {
   const streamBtn = document.getElementById('streamBtn');
   const volumeSlider = document.getElementById('volumeSlider');
   const streamAudio = document.getElementById('streamAudio');
+  const tracksSection = document.getElementById('tracksSection');
   
   // Настройка громкости
   streamAudio.volume = volumeSlider.value / 100;
@@ -465,6 +552,17 @@ function initStream() {
   
   // Управление потоком
   streamBtn.addEventListener('click', toggleStream);
+  
+  // ВАЖНО: Блок с треками всегда видим и НЕ скрывается
+  // Убираем любые события, которые могут скрывать блок
+  tracksSection.classList.remove('hidden');
+  tracksSection.style.display = 'block';
+  tracksSection.style.visibility = 'visible';
+  tracksSection.style.opacity = '1';
+  tracksSection.style.pointerEvents = 'auto';
+  
+  // Добавляем класс к body для управления состояниями
+  document.body.classList.add('stream-not-playing');
 }
 
 // Управление потоком
@@ -473,9 +571,19 @@ async function toggleStream() {
   const streamStatus = document.getElementById('streamStatus');
   const statusBadge = document.getElementById('statusBadge');
   const streamAudio = document.getElementById('streamAudio');
+  const tracksSection = document.getElementById('tracksSection');
   
-  // Останавливаем превью
-  stopPreview();
+  // НЕ останавливаем превью при переключении эфира
+  // Прерываем только если превью играет
+  if (currentPreviewId && streamPlaying) {
+    stopPreview();
+  }
+  
+  // ВАЖНО: Сохраняем видимость блока с треками
+  tracksSection.classList.remove('hidden');
+  tracksSection.style.display = 'block';
+  tracksSection.style.visibility = 'visible';
+  tracksSection.style.opacity = '1';
   
   if (!streamPlaying) {
     // Запускаем поток
@@ -501,6 +609,14 @@ async function toggleStream() {
       streamStatus.textContent = 'Сейчас играет: Прямой эфир';
       statusBadge.innerHTML = '<i class="fas fa-circle" style="color: #10B981"></i> В ЭФИРЕ';
       showNotification('Эфир включен');
+      
+      // Обновляем состояние body
+      document.body.classList.remove('stream-not-playing');
+      document.body.classList.add('stream-playing');
+      
+      // ВАЖНО: Блок с треками остается активным
+      enableTracksSection();
+      
     } catch (error) {
       console.error('Playback error:', error);
       showNotification('Ошибка воспроизведения');
@@ -514,18 +630,58 @@ async function toggleStream() {
     streamStatus.textContent = 'Эфир остановлен';
     statusBadge.innerHTML = '<i class="fas fa-circle" style="color: #EF4444"></i> ПАУЗА';
     showNotification('Эфир остановлен');
+    
+    // Обновляем состояние body
+    document.body.classList.remove('stream-playing');
+    document.body.classList.add('stream-not-playing');
+    
+    // ВАЖНО: Блок с треками остается активным
+    enableTracksSection();
   }
+}
+
+// Включаем блок с треками (гарантированно видимый и кликабельный)
+function enableTracksSection() {
+  const tracksSection = document.getElementById('tracksSection');
+  const trackCards = document.querySelectorAll('.track-card');
+  const previewButtons = document.querySelectorAll('.preview-btn');
+  
+  // Гарантируем видимость
+  tracksSection.style.display = 'block';
+  tracksSection.style.visibility = 'visible';
+  tracksSection.style.opacity = '1';
+  tracksSection.style.pointerEvents = 'auto';
+  tracksSection.classList.remove('hidden');
+  
+  // Гарантируем кликабельность
+  trackCards.forEach(card => {
+    card.style.opacity = '1';
+    card.style.pointerEvents = 'auto';
+  });
+  
+  previewButtons.forEach(btn => {
+    btn.style.opacity = '1';
+    btn.style.pointerEvents = 'auto';
+    btn.disabled = false;
+  });
 }
 
 // Загрузка треков
 async function loadTracks() {
+  if (isLoadingTracks) return;
+  
   try {
+    isLoadingTracks = true;
     const response = await fetch(CONFIG.TRACKS_API + '?t=' + Date.now());
     const tracks = await response.json();
     
     // Обновляем время последнего обновления
     document.getElementById('lastUpdate').textContent = 
       `Обновлено: ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+    
+    // Сохраняем в localStorage для быстрого доступа
+    localStorage.setItem('tracks', JSON.stringify(tracks));
+    localStorage.setItem('tracks_updated', Date.now().toString());
     
     renderTracks(tracks);
   } catch (error) {
@@ -536,80 +692,131 @@ async function loadTracks() {
         id: 1,
         artist: 'Luna Wave',
         title: 'Midnight Drive',
-        audio: 'https://example.com/track1.mp3',
+        audio: 'tracks/track1.mp3',
         artwork: '🎵',
-        votes: { likes: 124, dislikes: 12 }
+        votes: { likes: 124, dislikes: 12 },
+        genre: 'Synthwave'
       },
       {
         id: 2,
         artist: 'Neon Dreams',
         title: 'Electric Sky',
-        audio: 'https://example.com/track2.mp3',
+        audio: 'tracks/track2.mp3',
         artwork: '🎶',
-        votes: { likes: 89, dislikes: 5 }
+        votes: { likes: 89, dislikes: 5 },
+        genre: 'Electronic'
       },
       {
         id: 3,
         artist: 'Solar Flare',
         title: 'Nova',
-        audio: 'https://example.com/track3.mp3',
+        audio: 'tracks/track3.mp3',
         artwork: '🔥',
-        votes: { likes: 256, dislikes: 18 }
+        votes: { likes: 256, dislikes: 18 },
+        genre: 'Ambient'
       }
     ];
-    renderTracks(testTracks);
+    
+    // Проверяем, есть ли сохраненные треки в localStorage
+    const savedTracks = localStorage.getItem('tracks');
+    if (savedTracks) {
+      try {
+        renderTracks(JSON.parse(savedTracks));
+      } catch {
+        renderTracks(testTracks);
+      }
+    } else {
+      renderTracks(testTracks);
+    }
+  } finally {
+    isLoadingTracks = false;
   }
 }
 
 // Рендеринг треков
 function renderTracks(tracks) {
   const container = document.getElementById('tracksContainer');
-  container.innerHTML = '';
   
-  tracks.forEach((track, index) => {
-    const trackElement = document.createElement('div');
-    trackElement.className = `track-card fade-in`;
-    trackElement.style.animationDelay = `${index * 0.1}s`;
-    
-    if (currentPreviewId === track.id) {
-      trackElement.classList.add('playing');
-    }
-    
-    trackElement.innerHTML = `
-      <div class="track-header">
-        <div class="track-artwork">
-          ${track.artwork || '🎵'}
+  if (!tracks || tracks.length === 0) {
+    container.innerHTML = `
+      <div class="track-card fade-in">
+        <div class="track-header">
+          <div class="track-artwork">
+            <i class="fas fa-music"></i>
+          </div>
+          <div class="track-info">
+            <div class="track-title">Треков пока нет</div>
+            <div class="track-artist">Скоро появятся новинки</div>
+          </div>
         </div>
-        <div class="track-info">
-          <div class="track-title">${track.title}</div>
-          <div class="track-artist">${track.artist}</div>
+        <div class="track-controls">
+          <button class="control-btn preview-btn" disabled>
+            <i class="fas fa-play"></i> Недоступно
+          </button>
+          <button class="control-btn like-btn" disabled>
+            <i class="fas fa-thumbs-up"></i> 0
+          </button>
+          <button class="control-btn dislike-btn" disabled>
+            <i class="fas fa-thumbs-down"></i> 0
+          </button>
         </div>
-      </div>
-      <div class="track-controls">
-        <button class="control-btn preview-btn ${currentPreviewId === track.id ? 'playing' : ''}" 
-                onclick="togglePreview(${JSON.stringify(track).replace(/"/g, '&quot;')})">
-          <i class="fas ${currentPreviewId === track.id ? 'fa-stop' : 'fa-play'}"></i>
-          ${currentPreviewId === track.id ? 'СТОП' : 'ПРЕСЛУШАТЬ'}
-        </button>
-        <button class="control-btn like-btn" onclick="vote(${track.id}, 1)">
-          <i class="fas fa-thumbs-up"></i>
-          <span class="like-count">${track.votes?.likes || 0}</span>
-        </button>
-        <button class="control-btn dislike-btn" onclick="vote(${track.id}, -1)">
-          <i class="fas fa-thumbs-down"></i>
-          <span class="dislike-count">${track.votes?.dislikes || 0}</span>
-        </button>
       </div>
     `;
+    return;
+  }
+  
+  let html = '';
+  
+  tracks.forEach((track, index) => {
+    const isPlaying = currentPreviewId === track.id;
     
-    container.appendChild(trackElement);
+    html += `
+      <div class="track-card fade-in ${isPlaying ? 'playing' : ''}">
+        ${isPlaying ? '<div class="now-playing-indicator">СЛУШАЕТЕ</div>' : ''}
+        <div class="track-header">
+          <div class="track-artwork">
+            ${track.artwork || '🎵'}
+          </div>
+          <div class="track-info">
+            <div class="track-title">${track.title}</div>
+            <div class="track-artist">${track.artist}</div>
+            ${track.genre ? `<div class="track-artist" style="font-size: 12px; opacity: 0.7;">${track.genre}</div>` : ''}
+          </div>
+        </div>
+        <div class="track-controls">
+          <button class="control-btn preview-btn ${isPlaying ? 'playing' : ''}" 
+                  onclick="togglePreview(${JSON.stringify(track).replace(/"/g, '&quot;')})"
+                  ${streamPlaying ? '' : ''}>
+            <i class="fas ${isPlaying ? 'fa-stop' : 'fa-play'}"></i>
+            ${isPlaying ? 'ОСТАНОВИТЬ' : 'ПРЕСЛУШАТЬ'}
+          </button>
+          <button class="control-btn like-btn" onclick="vote(${track.id}, 1)">
+            <i class="fas fa-thumbs-up"></i>
+            <span class="like-count">${track.votes?.likes || 0}</span>
+          </button>
+          <button class="control-btn dislike-btn" onclick="vote(${track.id}, -1)">
+            <i class="fas fa-thumbs-down"></i>
+            <span class="dislike-count">${track.votes?.dislikes || 0}</span>
+          </button>
+        </div>
+      </div>
+    `;
   });
+  
+  container.innerHTML = html;
 }
 
 // Управление превью
 function togglePreview(track) {
+  // Если эфир играет, предлагаем переключиться
   if (streamPlaying) {
-    toggleStream();
+    if (confirm('Эфир сейчас играет. Остановить эфир и послушать трек?')) {
+      toggleStream(); // Останавливаем эфир
+      setTimeout(() => {
+        playPreview(track); // Запускаем превью
+      }, 500);
+    }
+    return;
   }
   
   if (currentPreviewId === track.id) {
@@ -617,6 +824,10 @@ function togglePreview(track) {
     return;
   }
   
+  playPreview(track);
+}
+
+function playPreview(track) {
   stopPreview();
   
   previewAudio.src = track.audio;
@@ -625,7 +836,8 @@ function togglePreview(track) {
   currentPreviewId = track.id;
   
   // Обновляем UI
-  renderTracks(JSON.parse(localStorage.getItem('tracks') || '[]'));
+  const tracks = JSON.parse(localStorage.getItem('tracks') || '[]');
+  renderTracks(tracks);
   
   showNotification(`Слушаем: ${track.artist} - ${track.title}`);
   
@@ -639,7 +851,10 @@ function stopPreview() {
   previewAudio.pause();
   previewAudio.currentTime = 0;
   currentPreviewId = null;
-  renderTracks(JSON.parse(localStorage.getItem('tracks') || '[]'));
+  
+  // Обновляем UI
+  const tracks = JSON.parse(localStorage.getItem('tracks') || '[]');
+  renderTracks(tracks);
 }
 
 // Голосование
