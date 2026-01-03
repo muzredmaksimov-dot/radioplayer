@@ -1,7 +1,12 @@
-const tg = window.Telegram.WebApp;
-tg.ready();
+/* ===== TELEGRAM SAFE INIT ===== */
+let tg = null;
 
-/* ===== ЭФИР ===== */
+if (window.Telegram && window.Telegram.WebApp) {
+  tg = window.Telegram.WebApp;
+  tg.ready();
+}
+
+/* ===== RADIO ===== */
 const radioStream = new Audio(
   "https://media1.datacenter.by:1936/radiomir/radiomir/playlist.m3u8"
 );
@@ -19,7 +24,7 @@ playBtn.onclick = () => {
   }
 };
 
-/* ===== СЕЙЧАС В ЭФИРЕ ===== */
+/* ===== ON AIR ===== */
 function getOnAir() {
   const h = new Date().getHours();
   if (h >= 7 && h < 11) return "Мировое утро";
@@ -28,13 +33,14 @@ function getOnAir() {
   if (h >= 16 && h < 20) return "Вечер без суеты с Женей Задорой";
   return "Музыкальный нон-стоп";
 }
+
 document.getElementById("onAir").textContent = getOnAir();
 
-/* ===== ГОЛОСОВАНИЕ ===== */
+/* ===== VOTES CACHE ===== */
 let votesCache = [];
 
 fetch("data/votes.csv")
-  .then(r => r.text())
+  .then(r => r.ok ? r.text() : "")
   .then(text => {
     votesCache = text
       .split("\n")
@@ -49,7 +55,7 @@ function hasVoted(userId, trackId) {
   return votesCache.some(v => v.user == userId && v.track == trackId);
 }
 
-/* ===== НОВИНКИ ===== */
+/* ===== PREVIEW PLAYER ===== */
 let preview = new Audio();
 
 function playPreview(url) {
@@ -58,11 +64,12 @@ function playPreview(url) {
   preview.play();
 }
 
+/* ===== TRACKS ===== */
 fetch("data/tracks.json")
   .then(r => r.json())
   .then(tracks => {
     const box = document.getElementById("tracks");
-    const user = tg.initDataUnsafe.user;
+    const user = tg?.initDataUnsafe?.user || null;
 
     tracks.forEach(t => {
       const voted = user ? hasVoted(user.id, t.id) : false;
@@ -81,28 +88,25 @@ fetch("data/tracks.json")
         <button class="vote-btn ${voted ? 'disabled' : ''}"
           onclick="vote(${t.id}, 'dislike', this)">👎</button>
 
-        ${voted ? '<div class="vote-info">Вы уже проголосовали</div>' : ''}
+        ${voted ? '<div class="vote-info">Вы уже голосовали</div>' : ''}
       `;
       box.appendChild(div);
     });
   });
 
+/* ===== VOTE ===== */
 function vote(trackId, type, btn) {
+  if (!tg || !tg.initDataUnsafe?.user) {
+    alert("Чтобы голосовать, откройте через Telegram");
+    return;
+  }
+
   const user = tg.initDataUnsafe.user;
 
-  if (!user) {
-    tg.showAlert("Чтобы проголосовать, авторизуйтесь через Telegram");
-    return;
-  }
-
-  if (hasVoted(user.id, trackId)) {
-    tg.showAlert("Вы уже голосовали");
-    return;
-  }
+  if (hasVoted(user.id, trackId)) return;
 
   btn.parentElement.querySelectorAll(".vote-btn").forEach(b => {
     b.classList.add("disabled");
-    b.onclick = null;
   });
 
   btn.classList.add("selected");
@@ -111,23 +115,4 @@ function vote(trackId, type, btn) {
   info.className = "vote-info";
   info.textContent = "Спасибо! Голос принят";
   btn.parentElement.appendChild(info);
-
-  sendVote(user.id, trackId, type);
-}
-
-function sendVote(userId, trackId, vote) {
-  fetch("https://api.github.com/repos/YOUR_REPO/dispatches", {
-    method: "POST",
-    headers: {
-      "Accept": "application/vnd.github+json"
-    },
-    body: JSON.stringify({
-      event_type: "new_vote",
-      client_payload: {
-        user: userId,
-        track: trackId,
-        vote: vote
-      }
-    })
-  });
 }
