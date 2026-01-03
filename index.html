@@ -9,170 +9,182 @@
 <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 
 <style>
-body{
-    background:linear-gradient(135deg,#1a237e,#3949ab);
-    color:#fff;
-    font-family:Segoe UI,sans-serif;
-    margin:0;padding:20px
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: linear-gradient(135deg, #1a237e, #3949ab);
+  color: #fff;
 }
-.container{max-width:420px;margin:auto}
-.card{
-    background:rgba(255,255,255,.08);
-    border-radius:20px;
-    padding:20px;
-    margin-bottom:20px
+.container {
+  max-width: 420px;
+  margin: auto;
+  padding: 20px;
 }
-.play-btn{
-    width:80px;height:80px;border-radius:50%;
-    background:#2196f3;border:none;color:#fff;
-    font-size:22px;cursor:pointer
+h2 {
+  margin: 20px 0 10px;
 }
-.track-title{text-align:center;font-size:18px;font-weight:600}
-.track-artist{text-align:center;opacity:.8;margin-bottom:10px}
-.status{text-align:center;font-size:12px;opacity:.7;margin-top:10px}
-
-.vote{display:flex;gap:10px;margin-top:15px}
-.vote button{
-    flex:1;padding:12px;border:none;border-radius:12px;
-    font-size:16px;cursor:pointer
+button {
+  border: none;
+  border-radius: 20px;
+  padding: 10px 15px;
+  cursor: pointer;
 }
-.like{background:#4caf50;color:#fff}
-.dislike{background:#f44336;color:#fff}
-.disabled{opacity:.4;pointer-events:none}
-
-.list .item{
-    background:rgba(255,255,255,.06);
-    padding:12px;border-radius:14px;margin-bottom:12px
+.play-btn {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: #2196f3;
+  color: #fff;
+  font-size: 18px;
 }
-.item button{
-    margin-top:8px;padding:6px 10px;
-    border:none;border-radius:8px;cursor:pointer
+.track {
+  background: rgba(255,255,255,0.1);
+  padding: 12px;
+  border-radius: 16px;
+  margin-bottom: 10px;
 }
-.preview{background:#03a9f4;color:#fff}
+.track-title {
+  font-weight: bold;
+}
+.controls {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+.like { background: #4caf50; }
+.dislike { background: #f44336; }
+.preview-btn.playing {
+  background: #ff4081;
+}
 </style>
 </head>
 
 <body>
 <div class="container">
 
-<!-- ЭФИР -->
-<div class="card">
-    <div class="track-title" id="onAirTitle">Музыкальный эфир</div>
-    <div class="track-artist" id="onAirArtist">Радио МИР</div>
+<h2>🎙 ЭФИР МИР</h2>
 
-    <div style="text-align:center">
-        <button class="play-btn" id="playBtn">▶</button>
-    </div>
+<button class="play-btn" id="streamBtn">▶</button>
+<div id="streamStatus">Эфир остановлен</div>
 
-    <div class="vote">
-        <button class="like" id="likeBtn">👍</button>
-        <button class="dislike" id="dislikeBtn">👎</button>
-    </div>
+<h2>🔥 Новинки эфира</h2>
+<div id="tracks"></div>
 
-    <div class="status" id="status">Оцените эфир</div>
-</div>
+<audio id="streamAudio"></audio>
 
-<!-- НОВИНКИ -->
-<div class="card">
-    <strong>Новинки эфира</strong>
-    <div class="list" id="tracks"></div>
-</div>
-
-<audio id="audio"></audio>
 </div>
 
 <script>
-/* ===== TELEGRAM SAFE ===== */
-const tg = window.Telegram?.WebApp || null;
-const userId = tg?.initDataUnsafe?.user?.id || 'browser';
-if(tg) tg.ready();
+const tg = window.Telegram.WebApp;
+tg.expand();
 
-/* ===== RADIO PLAYER ===== */
-const audio=document.getElementById('audio');
-const playBtn=document.getElementById('playBtn');
-const STREAM='https://media1.datacenter.by:1936/radiomir/radiomir/playlist.m3u8';
-let hls,playing=false;
+const STREAM_URL = 'https://media1.datacenter.by:1936/radiomir/radiomir/playlist.m3u8';
 
-playBtn.onclick=()=>{
-    if(!hls && !audio.src){
-        if(Hls.isSupported()){
-            hls=new Hls();
-            hls.loadSource(STREAM);
-            hls.attachMedia(audio);
-        } else audio.src=STREAM;
-    }
-    if(playing){audio.pause();playBtn.textContent='▶'}
-    else{audio.play();playBtn.textContent='⏸'}
-    playing=!playing;
-};
+// ===== ЭФИР =====
+const streamAudio = document.getElementById('streamAudio');
+let hls;
+let streamPlaying = false;
 
-/* ===== VOTING CORE ===== */
-let currentTrackId='onair';
+function toggleStream() {
+  stopPreview();
 
-function voteKey(track){return `vote_${userId}_${track}`}
+  if (!hls) {
+    hls = new Hls();
+    hls.loadSource(STREAM_URL);
+    hls.attachMedia(streamAudio);
+  }
 
-function checkVote(track){
-    const voted=localStorage.getItem(voteKey(track));
-    document.getElementById('likeBtn').classList.toggle('disabled',!!voted);
-    document.getElementById('dislikeBtn').classList.toggle('disabled',!!voted);
-    document.getElementById('status').textContent=voted?'Вы уже голосовали':'Оцените эфир';
+  if (streamPlaying) {
+    streamAudio.pause();
+    streamPlaying = false;
+    streamBtn.textContent = '▶';
+    streamStatus.textContent = 'Эфир остановлен';
+  } else {
+    streamAudio.play();
+    streamPlaying = true;
+    streamBtn.textContent = '⏸';
+    streamStatus.textContent = 'Эфир в эфире';
+  }
 }
 
-function saveVote(track,value){
-    localStorage.setItem(voteKey(track),value);
-    votesQueue.push({user:userId,track,value,time:Date.now()});
-    checkVote(track);
-    console.log('VOTE QUEUE',votesQueue);
-}
+streamBtn.onclick = toggleStream;
 
-document.getElementById('likeBtn').onclick=()=>saveVote(currentTrackId,1);
-document.getElementById('dislikeBtn').onclick=()=>saveVote(currentTrackId,-1);
-checkVote(currentTrackId);
+// ===== НОВИНКИ =====
+let previewAudio = new Audio();
+let currentPreviewId = null;
 
-/* ===== НОВИНКИ ===== */
-const tracksData=[
- {id:1,artist:'Группа А',title:'Новый день',audio:'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'},
- {id:2,artist:'Исполнитель Б',title:'Без суеты',audio:'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3'}
+const userId = tg.initDataUnsafe?.user?.id || 'guest';
+
+// ТЕСТОВЫЕ ДАННЫЕ (потом заменишь на JSON)
+const tracks = [
+  {
+    id: 1,
+    artist: 'Artist 1',
+    title: 'Track One',
+    audio: 'tracks/track1.mp3'
+  },
+  {
+    id: 2,
+    artist: 'Artist 2',
+    title: 'Track Two',
+    audio: 'tracks/track2.mp3'
+  }
 ];
 
-let preview=new Audio();
-
-function playPreview(url){
-    preview.pause();
-    preview=new Audio(url);
-    preview.play();
+function stopPreview() {
+  previewAudio.pause();
+  currentPreviewId = null;
+  document.querySelectorAll('.preview-btn').forEach(b => b.classList.remove('playing'));
 }
 
-const box=document.getElementById('tracks');
+function togglePreview(track) {
+  if (streamPlaying) {
+    streamAudio.pause();
+    streamPlaying = false;
+    streamBtn.textContent = '▶';
+  }
 
-tracksData.forEach(t=>{
-    const voted=localStorage.getItem(voteKey(t.id));
-    const div=document.createElement('div');
-    div.className='item';
-    div.innerHTML=`
-        <strong>${t.artist}</strong><br>${t.title}
-        <br>
-        <button class="preview" onclick="playPreview('${t.audio}')">▶ Слушать</button>
-        <div class="vote">
-            <button class="like ${voted?'disabled':''}"
-                onclick="voteTrack(${t.id},1,this)">👍</button>
-            <button class="dislike ${voted?'disabled':''}"
-                onclick="voteTrack(${t.id},-1,this)">👎</button>
+  if (currentPreviewId === track.id) {
+    stopPreview();
+    return;
+  }
+
+  stopPreview();
+  previewAudio.src = track.audio;
+  previewAudio.play();
+  currentPreviewId = track.id;
+
+  document.querySelector(`[data-id="${track.id}"]`).classList.add('playing');
+}
+
+function vote(trackId, value) {
+  fetch('votes.csv', {
+    method: 'POST',
+    body: `${userId},${trackId},${value}\n`
+  }).then(() => {
+    alert('Голос принят 👍');
+  });
+}
+
+function renderTracks() {
+  const wrap = document.getElementById('tracks');
+  wrap.innerHTML = '';
+
+  tracks.forEach(t => {
+    wrap.innerHTML += `
+      <div class="track">
+        <div class="track-title">${t.artist} — ${t.title}</div>
+        <div class="controls">
+          <button class="preview-btn" data-id="${t.id}" onclick='togglePreview(${JSON.stringify(t)})'>▶</button>
+          <button class="like" onclick="vote(${t.id},1)">👍</button>
+          <button class="dislike" onclick="vote(${t.id},-1)">👎</button>
         </div>
+      </div>
     `;
-    box.appendChild(div);
-});
-
-function voteTrack(id,value,btn){
-    if(localStorage.getItem(voteKey(id))) return;
-    localStorage.setItem(voteKey(id),value);
-    btn.parentElement.querySelectorAll('button').forEach(b=>b.classList.add('disabled'));
-    votesQueue.push({user:userId,track:id,value,time:Date.now()});
-    console.log('VOTE QUEUE',votesQueue);
+  });
 }
 
-/* ===== QUEUE FOR CSV (позже) ===== */
-const votesQueue=[];
+renderTracks();
 </script>
 </body>
 </html>
