@@ -59,7 +59,7 @@ body {
 .logo-icon {
   width: 48px;
   height: 48px;
-  background: linear-gradient(135deg, var(--primary), var(--secondary);
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
   border-radius: 12px;
   display: flex;
   align-items: center;
@@ -365,6 +365,32 @@ body {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* Загрузка */
+.loading {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* Адаптивность */
+@media (max-width: 480px) {
+  .container {
+    padding: 16px;
+  }
+  
+  .stream-card {
+    padding: 24px;
+  }
+  
+  .track-controls {
+    flex-direction: column;
+  }
+  
+  .control-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
 </style>
 </head>
 
@@ -419,6 +445,28 @@ body {
 
     <div class="tracks-grid" id="tracksContainer">
       <!-- Треки загружаются здесь -->
+      <div class="track-card fade-in">
+        <div class="track-header">
+          <div class="track-artwork">
+            <span class="loader"></span>
+          </div>
+          <div class="track-info">
+            <div class="track-title">Загрузка треков...</div>
+            <div class="track-artist">Пожалуйста, подождите</div>
+          </div>
+        </div>
+        <div class="track-controls">
+          <button class="control-btn preview-btn" disabled>
+            <i class="fas fa-spinner fa-spin"></i> Загрузка
+          </button>
+          <button class="control-btn like-btn" disabled>
+            <i class="fas fa-thumbs-up"></i> 0
+          </button>
+          <button class="control-btn dislike-btn" disabled>
+            <i class="fas fa-thumbs-down"></i> 0
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -426,7 +474,7 @@ body {
 </div>
 
 <script>
-// Telegram Web App
+// Инициализация Telegram Web App
 const tg = window.Telegram.WebApp;
 tg.expand();
 tg.setHeaderColor('#111827');
@@ -445,14 +493,28 @@ let streamPlaying = false;
 let previewAudio = new Audio();
 let currentPreviewId = null;
 let userId = tg.initDataUnsafe?.user?.id || 'guest_' + Math.random().toString(36).substr(2, 9);
+let tracksData = [];
 
-// Инициализация
-document.addEventListener('DOMContentLoaded', async () => {
-  await loadTracks();
+// Инициализация при загрузке страницы
+document.addEventListener('DOMContentLoaded', function() {
+  console.log('Страница загружена, инициализация...');
+  
+  // Загружаем треки
+  loadTracks();
+  
+  // Инициализируем аудиопоток
   initStream();
+  
+  // Обновляем счетчик слушателей
   updateListeners();
+  
+  // Обновляем время
   updateTime();
-  setInterval(loadTracks, 30000);
+  
+  // Периодически обновляем треки
+  setInterval(loadTracks, 30000); // Каждые 30 секунд
+  
+  console.log('Инициализация завершена');
 });
 
 // Инициализация потока
@@ -461,12 +523,14 @@ function initStream() {
   const volumeSlider = document.getElementById('volumeSlider');
   const streamAudio = document.getElementById('streamAudio');
   
+  // Настройка громкости
   streamAudio.volume = volumeSlider.value / 100;
   volumeSlider.addEventListener('input', (e) => {
     streamAudio.volume = e.target.value / 100;
     previewAudio.volume = e.target.value / 100;
   });
   
+  // Управление потоком
   streamBtn.addEventListener('click', toggleStream);
 }
 
@@ -477,11 +541,13 @@ async function toggleStream() {
   const statusBadge = document.getElementById('statusBadge');
   const streamAudio = document.getElementById('streamAudio');
   
+  // Останавливаем превью если оно играет
   if (currentPreviewId) {
     stopPreview();
   }
   
   if (!streamPlaying) {
+    // Запускаем поток
     if (!hls) {
       if (Hls.isSupported()) {
         hls = new Hls();
@@ -489,7 +555,7 @@ async function toggleStream() {
         hls.attachMedia(streamAudio);
         hls.on(Hls.Events.ERROR, (event, data) => {
           console.error('HLS error:', data);
-          showNotification('Ошибка подключения');
+          showNotification('Ошибка подключения к потоку');
         });
       } else if (streamAudio.canPlayType('application/vnd.apple.mpegurl')) {
         streamAudio.src = CONFIG.STREAM_URL;
@@ -503,12 +569,13 @@ async function toggleStream() {
       streamBtn.classList.add('playing');
       streamStatus.textContent = 'Сейчас играет: Прямой эфир';
       statusBadge.innerHTML = '<i class="fas fa-circle" style="color: #10B981"></i> В ЭФИРЕ';
-      showNotification('Эфир включен');
+      showNotification('Эфир включен 🎧');
     } catch (error) {
       console.error('Playback error:', error);
       showNotification('Ошибка воспроизведения');
     }
   } else {
+    // Останавливаем поток
     streamAudio.pause();
     streamPlaying = false;
     streamBtn.innerHTML = '<i class="fas fa-play"></i>';
@@ -522,16 +589,74 @@ async function toggleStream() {
 // Загрузка треков
 async function loadTracks() {
   try {
+    console.log('Загрузка треков...');
     const response = await fetch(CONFIG.TRACKS_API + '?t=' + Date.now());
-    const tracks = await response.json();
     
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const tracks = await response.json();
+    tracksData = tracks;
+    
+    // Обновляем время последнего обновления
     document.getElementById('lastUpdate').textContent = 
       `Обновлено: ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
     
+    // Сохраняем в localStorage
+    localStorage.setItem('tracks', JSON.stringify(tracks));
+    localStorage.setItem('tracks_updated', Date.now().toString());
+    
     renderTracks(tracks);
+    console.log(`Загружено ${tracks.length} треков`);
+    
   } catch (error) {
     console.error('Error loading tracks:', error);
-    renderTracks([]);
+    
+    // Используем тестовые данные если API недоступно
+    const testTracks = [
+      {
+        id: 1,
+        artist: 'Luna Wave',
+        title: 'Midnight Drive',
+        audio: 'https://commondatastorage.googleapis.com/codeskulptor-demos/DDR_assets/Kangaroo_MusiQue_-_The_Neverwritten_Role_Playing_Game.mp3',
+        artwork: '🎵',
+        votes: { likes: 124, dislikes: 12 },
+        genre: 'Synthwave'
+      },
+      {
+        id: 2,
+        artist: 'Neon Dreams',
+        title: 'Electric Sky',
+        audio: 'https://commondatastorage.googleapis.com/codeskulptor-demos/DDR_assets/Sevish_-__nbsp_.mp3',
+        artwork: '🎶',
+        votes: { likes: 89, dislikes: 5 },
+        genre: 'Electronic'
+      },
+      {
+        id: 3,
+        artist: 'Solar Flare',
+        title: 'Nova',
+        audio: 'https://commondatastorage.googleapis.com/codeskulptor-assets/Epoq-Lepidoptera.ogg',
+        artwork: '🔥',
+        votes: { likes: 256, dislikes: 18 },
+        genre: 'Ambient'
+      }
+    ];
+    
+    // Проверяем, есть ли сохраненные треки
+    const savedTracks = localStorage.getItem('tracks');
+    if (savedTracks) {
+      try {
+        renderTracks(JSON.parse(savedTracks));
+      } catch {
+        renderTracks(testTracks);
+      }
+    } else {
+      renderTracks(testTracks);
+    }
+    
+    showNotification('Используются тестовые треки');
   }
 }
 
@@ -571,17 +696,23 @@ function renderTracks(tracks) {
   
   tracks.forEach((track, index) => {
     const isPlaying = currentPreviewId === track.id;
+    const artist = track.artist || 'Неизвестный артист';
+    const title = track.title || 'Без названия';
+    const artwork = track.artwork || '🎵';
+    const likes = track.votes?.likes || 0;
+    const dislikes = track.votes?.dislikes || 0;
     
     html += `
       <div class="track-card fade-in ${isPlaying ? 'playing' : ''}">
         ${isPlaying ? '<div class="now-playing-indicator">СЛУШАЕТЕ</div>' : ''}
         <div class="track-header">
           <div class="track-artwork">
-            ${track.artwork || '🎵'}
+            ${artwork}
           </div>
           <div class="track-info">
-            <div class="track-title">${track.title || 'Трек'}</div>
-            <div class="track-artist">${track.artist || 'Исполнитель'}</div>
+            <div class="track-title">${title}</div>
+            <div class="track-artist">${artist}</div>
+            ${track.genre ? `<div class="track-artist" style="font-size: 12px; opacity: 0.7;">${track.genre}</div>` : ''}
           </div>
         </div>
         <div class="track-controls">
@@ -592,11 +723,11 @@ function renderTracks(tracks) {
           </button>
           <button class="control-btn like-btn" onclick="vote(${track.id}, 1)">
             <i class="fas fa-thumbs-up"></i>
-            <span class="like-count">${track.votes?.likes || 0}</span>
+            <span class="like-count">${likes}</span>
           </button>
           <button class="control-btn dislike-btn" onclick="vote(${track.id}, -1)">
             <i class="fas fa-thumbs-down"></i>
-            <span class="dislike-count">${track.votes?.dislikes || 0}</span>
+            <span class="dislike-count">${dislikes}</span>
           </button>
         </div>
       </div>
@@ -608,11 +739,14 @@ function renderTracks(tracks) {
 
 // Управление превью
 function togglePreview(track) {
+  console.log('Превью трека:', track);
+  
+  // Если эфир играет, предлагаем переключиться
   if (streamPlaying) {
     if (confirm('Эфир сейчас играет. Остановить эфир и послушать трек?')) {
-      toggleStream();
+      toggleStream(); // Останавливаем эфир
       setTimeout(() => {
-        playPreview(track);
+        playPreview(track); // Запускаем превью
       }, 500);
     }
     return;
@@ -629,31 +763,47 @@ function togglePreview(track) {
 function playPreview(track) {
   stopPreview();
   
+  console.log('Воспроизведение трека:', track.audio);
   previewAudio.src = track.audio;
   previewAudio.volume = document.getElementById('volumeSlider').value / 100;
-  previewAudio.play();
-  currentPreviewId = track.id;
   
-  renderTracks(JSON.parse(localStorage.getItem('tracks') || '[]'));
-  showNotification(`Слушаем: ${track.artist} - ${track.title}`);
+  previewAudio.play().then(() => {
+    currentPreviewId = track.id;
+    renderTracks(tracksData);
+    showNotification(`Слушаем: ${track.artist} - ${track.title}`);
+  }).catch(error => {
+    console.error('Ошибка воспроизведения:', error);
+    showNotification('Ошибка воспроизведения трека');
+  });
   
+  // Событие окончания трека
   previewAudio.onended = () => {
+    console.log('Трек закончился');
+    stopPreview();
+  };
+  
+  // Ошибка воспроизведения
+  previewAudio.onerror = (error) => {
+    console.error('Ошибка аудио:', error);
+    showNotification('Ошибка загрузки аудио');
     stopPreview();
   };
 }
 
 function stopPreview() {
-  previewAudio.pause();
-  previewAudio.currentTime = 0;
+  if (previewAudio) {
+    previewAudio.pause();
+    previewAudio.currentTime = 0;
+  }
   currentPreviewId = null;
-  
-  const tracks = JSON.parse(localStorage.getItem('tracks') || '[]');
-  renderTracks(tracks);
+  renderTracks(tracksData);
 }
 
 // Голосование
 async function vote(trackId, value) {
   try {
+    console.log('Голосование:', trackId, value);
+    
     const response = await fetch(CONFIG.VOTES_API, {
       method: 'POST',
       headers: {
@@ -668,25 +818,31 @@ async function vote(trackId, value) {
     });
     
     if (response.ok) {
-      showNotification(value === 1 ? '👍 Лайк принят!' : '👎 Дизлайк принят!');
+      const message = value === 1 ? '👍 Лайк принят!' : '👎 Дизлайк принят!';
+      showNotification(message);
       
-      const tracks = JSON.parse(localStorage.getItem('tracks') || '[]');
-      const trackIndex = tracks.findIndex(t => t.id === trackId);
+      // Обновляем счетчики локально
+      const trackIndex = tracksData.findIndex(t => t.id === trackId);
       
       if (trackIndex !== -1) {
-        if (!tracks[trackIndex].votes) {
-          tracks[trackIndex].votes = { likes: 0, dislikes: 0 };
+        if (!tracksData[trackIndex].votes) {
+          tracksData[trackIndex].votes = { likes: 0, dislikes: 0 };
         }
         
         if (value === 1) {
-          tracks[trackIndex].votes.likes++;
+          tracksData[trackIndex].votes.likes++;
         } else {
-          tracks[trackIndex].votes.dislikes++;
+          tracksData[trackIndex].votes.dislikes++;
         }
         
-        localStorage.setItem('tracks', JSON.stringify(tracks));
-        renderTracks(tracks);
+        // Сохраняем в localStorage
+        localStorage.setItem('tracks', JSON.stringify(tracksData));
+        
+        // Обновляем UI
+        renderTracks(tracksData);
       }
+    } else {
+      throw new Error('Ошибка сервера');
     }
   } catch (error) {
     console.error('Vote error:', error);
@@ -708,20 +864,34 @@ function showNotification(message) {
 
 function updateListeners() {
   const countElement = document.getElementById('listenersCount');
+  if (!countElement) return;
+  
+  // Имитация живых слушателей
   const baseListeners = 1247;
   const randomChange = Math.floor(Math.random() * 50) - 25;
   const currentListeners = Math.max(1000, baseListeners + randomChange);
   
   countElement.textContent = `${currentListeners.toLocaleString()} слушают`;
   
+  // Обновляем каждую минуту
   setTimeout(updateListeners, 60000);
 }
 
 function updateTime() {
-  setTimeout(updateTime, 60000);
+  const now = new Date();
+  const timeString = now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+  
+  // Можно добавить отображение времени в будущем
+  // Например: document.getElementById('currentTime').textContent = timeString;
+  
+  setTimeout(updateTime, 60000); // Обновляем каждую минуту
 }
 
-// Экспортируем функции
+// Дебаг информация
+console.log('Telegram Web App инициализирован:', tg.initDataUnsafe);
+console.log('User ID:', userId);
+
+// Делаем функции глобальными для обработчиков событий
 window.togglePreview = togglePreview;
 window.vote = vote;
 </script>
