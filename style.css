@@ -1,7 +1,13 @@
-body {
+* {
+  box-sizing: border-box;
+}
+
+html, body {
   margin: 0;
-  font-family: Arial, sans-serif;
+  padding: 0;
+  min-height: 100vh;
   background: #0b3c6d;
+  font-family: Arial, sans-serif;
   color: #fff;
 }
 
@@ -39,8 +45,8 @@ section {
 }
 
 .track {
-  background: rgba(255,255,255,0.1);
-  border-radius: 12px;
+  background: rgba(255,255,255,0.12);
+  border-radius: 14px;
   padding: 12px;
   margin-bottom: 12px;
 }
@@ -51,11 +57,12 @@ section {
   border: none;
   border-radius: 8px;
   cursor: pointer;
+  margin-right: 6px;
 }
 
 .vote-btn.disabled {
   opacity: 0.4;
-  cursor: default;
+  pointer-events: none;
 }
 
 .vote-btn.selected {
