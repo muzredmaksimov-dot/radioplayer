@@ -62,12 +62,12 @@ button {
 <body>
 <div class="container">
 
-<h2>🎙 ЭФИР МИР</h2>
+<h2>РАДИО МИР</h2>
 
 <button class="play-btn" id="streamBtn">▶</button>
 <div id="streamStatus">Эфир остановлен</div>
 
-<h2>🔥 Новинки эфира</h2>
+<h2>Новинки эфира</h2>
 <div id="tracks"></div>
 
 <audio id="streamAudio"></audio>
@@ -103,7 +103,7 @@ function toggleStream() {
     streamAudio.play();
     streamPlaying = true;
     streamBtn.textContent = '⏸';
-    streamStatus.textContent = 'Эфир в эфире';
+    streamStatus.textContent = 'Прямой эфир';
   }
 }
 
