@@ -9,128 +9,170 @@
 <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 
 <style>
-body {
-    background: linear-gradient(135deg,#1a237e,#3949ab);
+body{
+    background:linear-gradient(135deg,#1a237e,#3949ab);
     color:#fff;
-    font-family:Segoe UI, sans-serif;
-    margin:0;
-    padding:20px;
+    font-family:Segoe UI,sans-serif;
+    margin:0;padding:20px
 }
 .container{max-width:420px;margin:auto}
 .card{
     background:rgba(255,255,255,.08);
     border-radius:20px;
     padding:20px;
-    margin-bottom:20px;
+    margin-bottom:20px
 }
 .play-btn{
     width:80px;height:80px;border-radius:50%;
     background:#2196f3;border:none;color:#fff;
     font-size:22px;cursor:pointer
 }
-.vote{
-    display:flex;gap:10px;justify-content:center;margin-top:15px
-}
+.track-title{text-align:center;font-size:18px;font-weight:600}
+.track-artist{text-align:center;opacity:.8;margin-bottom:10px}
+.status{text-align:center;font-size:12px;opacity:.7;margin-top:10px}
+
+.vote{display:flex;gap:10px;margin-top:15px}
 .vote button{
     flex:1;padding:12px;border:none;border-radius:12px;
     font-size:16px;cursor:pointer
 }
 .like{background:#4caf50;color:#fff}
 .dislike{background:#f44336;color:#fff}
-.disabled{opacity:.5;pointer-events:none}
-.track{font-size:18px;font-weight:600;text-align:center}
-.artist{opacity:.8;text-align:center;margin-bottom:10px}
-.status{text-align:center;font-size:12px;opacity:.7;margin-top:10px}
+.disabled{opacity:.4;pointer-events:none}
+
+.list .item{
+    background:rgba(255,255,255,.06);
+    padding:12px;border-radius:14px;margin-bottom:12px
+}
+.item button{
+    margin-top:8px;padding:6px 10px;
+    border:none;border-radius:8px;cursor:pointer
+}
+.preview{background:#03a9f4;color:#fff}
 </style>
 </head>
 
 <body>
 <div class="container">
 
+<!-- ЭФИР -->
 <div class="card">
-    <div class="track" id="trackTitle">Загрузка эфира…</div>
-    <div class="artist" id="trackArtist">Радио МИР</div>
+    <div class="track-title" id="onAirTitle">Музыкальный эфир</div>
+    <div class="track-artist" id="onAirArtist">Радио МИР</div>
 
     <div style="text-align:center">
         <button class="play-btn" id="playBtn">▶</button>
     </div>
 
     <div class="vote">
-        <button class="like" id="likeBtn">👍 Нравится</button>
-        <button class="dislike" id="dislikeBtn">👎 Не нравится</button>
+        <button class="like" id="likeBtn">👍</button>
+        <button class="dislike" id="dislikeBtn">👎</button>
     </div>
 
-    <div class="status" id="status">Подключение…</div>
+    <div class="status" id="status">Оцените эфир</div>
+</div>
+
+<!-- НОВИНКИ -->
+<div class="card">
+    <strong>Новинки эфира</strong>
+    <div class="list" id="tracks"></div>
 </div>
 
 <audio id="audio"></audio>
 </div>
 
 <script>
-/* Telegram SAFE */
+/* ===== TELEGRAM SAFE ===== */
 const tg = window.Telegram?.WebApp || null;
-if (tg) tg.ready();
+const userId = tg?.initDataUnsafe?.user?.id || 'browser';
+if(tg) tg.ready();
 
-/* AUDIO */
-const audio = document.getElementById('audio');
-const playBtn = document.getElementById('playBtn');
-const STREAM = 'https://media1.datacenter.by:1936/radiomir/radiomir/playlist.m3u8';
-let hls, playing=false;
-
-/* TRACK STATE */
-let currentTrackId = null;
-
-function initPlayer(){
-    if(Hls.isSupported()){
-        hls=new Hls();
-        hls.loadSource(STREAM);
-        hls.attachMedia(audio);
-    } else {
-        audio.src=STREAM;
-    }
-}
+/* ===== RADIO PLAYER ===== */
+const audio=document.getElementById('audio');
+const playBtn=document.getElementById('playBtn');
+const STREAM='https://media1.datacenter.by:1936/radiomir/radiomir/playlist.m3u8';
+let hls,playing=false;
 
 playBtn.onclick=()=>{
-    if(!hls && !audio.src) initPlayer();
+    if(!hls && !audio.src){
+        if(Hls.isSupported()){
+            hls=new Hls();
+            hls.loadSource(STREAM);
+            hls.attachMedia(audio);
+        } else audio.src=STREAM;
+    }
     if(playing){audio.pause();playBtn.textContent='▶'}
     else{audio.play();playBtn.textContent='⏸'}
     playing=!playing;
 };
 
-/* FAKE METADATA (пока) */
-function setTrack(title,artist){
-    document.getElementById('trackTitle').textContent=title;
-    document.getElementById('trackArtist').textContent=artist;
-    currentTrackId = btoa(title+artist);
-    checkVote();
-}
-setTrack('Музыкальный эфир','Радио МИР');
+/* ===== VOTING CORE ===== */
+let currentTrackId='onair';
 
-/* VOTING */
-const likeBtn=document.getElementById('likeBtn');
-const dislikeBtn=document.getElementById('dislikeBtn');
+function voteKey(track){return `vote_${userId}_${track}`}
 
-function checkVote(){
-    const voted = localStorage.getItem('vote_'+currentTrackId);
-    if(voted){
-        likeBtn.classList.add('disabled');
-        dislikeBtn.classList.add('disabled');
-        document.getElementById('status').textContent='Вы уже голосовали';
-    } else {
-        likeBtn.classList.remove('disabled');
-        dislikeBtn.classList.remove('disabled');
-        document.getElementById('status').textContent='Оцените трек';
-    }
+function checkVote(track){
+    const voted=localStorage.getItem(voteKey(track));
+    document.getElementById('likeBtn').classList.toggle('disabled',!!voted);
+    document.getElementById('dislikeBtn').classList.toggle('disabled',!!voted);
+    document.getElementById('status').textContent=voted?'Вы уже голосовали':'Оцените эфир';
 }
 
-function saveVote(value){
-    localStorage.setItem('vote_'+currentTrackId,value);
-    checkVote();
-    console.log('VOTE:',currentTrackId,value); // ← сюда потом CSV
+function saveVote(track,value){
+    localStorage.setItem(voteKey(track),value);
+    votesQueue.push({user:userId,track,value,time:Date.now()});
+    checkVote(track);
+    console.log('VOTE QUEUE',votesQueue);
 }
 
-likeBtn.onclick=()=>saveVote(1);
-dislikeBtn.onclick=()=>saveVote(-1);
+document.getElementById('likeBtn').onclick=()=>saveVote(currentTrackId,1);
+document.getElementById('dislikeBtn').onclick=()=>saveVote(currentTrackId,-1);
+checkVote(currentTrackId);
+
+/* ===== НОВИНКИ ===== */
+const tracksData=[
+ {id:1,artist:'Группа А',title:'Новый день',audio:'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'},
+ {id:2,artist:'Исполнитель Б',title:'Без суеты',audio:'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3'}
+];
+
+let preview=new Audio();
+
+function playPreview(url){
+    preview.pause();
+    preview=new Audio(url);
+    preview.play();
+}
+
+const box=document.getElementById('tracks');
+
+tracksData.forEach(t=>{
+    const voted=localStorage.getItem(voteKey(t.id));
+    const div=document.createElement('div');
+    div.className='item';
+    div.innerHTML=`
+        <strong>${t.artist}</strong><br>${t.title}
+        <br>
+        <button class="preview" onclick="playPreview('${t.audio}')">▶ Слушать</button>
+        <div class="vote">
+            <button class="like ${voted?'disabled':''}"
+                onclick="voteTrack(${t.id},1,this)">👍</button>
+            <button class="dislike ${voted?'disabled':''}"
+                onclick="voteTrack(${t.id},-1,this)">👎</button>
+        </div>
+    `;
+    box.appendChild(div);
+});
+
+function voteTrack(id,value,btn){
+    if(localStorage.getItem(voteKey(id))) return;
+    localStorage.setItem(voteKey(id),value);
+    btn.parentElement.querySelectorAll('button').forEach(b=>b.classList.add('disabled'));
+    votesQueue.push({user:userId,track:id,value,time:Date.now()});
+    console.log('VOTE QUEUE',votesQueue);
+}
+
+/* ===== QUEUE FOR CSV (позже) ===== */
+const votesQueue=[];
 </script>
 </body>
 </html>
