@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8560880695:AAFUHhlq3kW_xP8gCd_Biv6q79S0VCoW8e4")
 
 # Если запускаем локально и хотим указать администратора
-ADMIN_ID = 582134246  # Замени на свой ID в Telegram
+ADMIN_ID = 866964827  # Замени на свой ID в Telegram
 ADMIN_IDS = [ADMIN_ID] if ADMIN_ID else []
 
 # Файлы
