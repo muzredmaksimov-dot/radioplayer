@@ -6,7 +6,7 @@ import csv
 import threading
 
 # === НАСТРОЙКИ ===
-TOKEN = "8560880695:AAFUHhlq3kW_xP8gCd_Biv6q79S0VCoW8e4"
+TOKEN = "8560880695:AAGpb-pKAt28ydK5XFhnJ9wS32hGRzTWrTo"
 ADMIN_CHAT_ID = 866964827  # ID админа
 CHANNEL_ID = "1002905716039"  # Официальный канал
 CSV_FILE = "tracks_stats.csv"
