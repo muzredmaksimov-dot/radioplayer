@@ -126,13 +126,16 @@ def health():
 
 # === ЗАПУСК ===
 if __name__ == "__main__":
-    print("🚀 Бот запускается...")
+    port = int(os.environ.get("PORT", 10000))
     if "RENDER" in os.environ:
-        bot.remove_webhook()
-        time.sleep(1)
-        bot.set_webhook(url=f"https://radioplayer-tq0i.onrender.com/webhook/{TOKEN}")
-        port = int(os.environ.get("PORT", 10000))
+        # Не блокировать Flask на set_webhook
+        def setup_webhook():
+            time.sleep(1)  # дождемся запуска сервиса
+            bot.remove_webhook()
+            bot.set_webhook(url=f"https://radioplayer-tq0i.onrender.com/webhook/{TOKEN}")
+        threading.Thread(target=setup_webhook).start()
         app.run(host="0.0.0.0", port=port)
     else:
         bot.remove_webhook()
         bot.polling(none_stop=True)
+
