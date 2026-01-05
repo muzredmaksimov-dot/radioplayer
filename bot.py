@@ -1,17 +1,19 @@
 import csv
 import os
-from aiogram import Bot, Dispatcher, executor, types
+from aiogram import Bot, Dispatcher, types
+from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram.dispatcher import FSMContext
+from aiogram.dispatcher.filters.state import State, StatesGroup
+from aiogram.utils import executor
 from config import BOT_TOKEN, CHANNEL_USERNAME, ADMIN_ID
 
 bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher(bot)
-
+dp = Dispatcher(bot, storage=MemoryStorage())
 
 # ================== ВСПОМОГАТЕЛЬНОЕ ==================
 
 def is_admin(user_id: int) -> bool:
     return user_id == ADMIN_ID
-
 
 async def is_subscriber(user_id: int) -> bool:
     try:
@@ -20,14 +22,12 @@ async def is_subscriber(user_id: int) -> bool:
     except:
         return False
 
-
 def get_next_track_id() -> int:
     if not os.path.exists("tracks.csv"):
         return 1
     with open("tracks.csv", newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
         return len(rows) + 1
-
 
 def save_track(track_id: int, artist: str, title: str):
     file_exists = os.path.exists("tracks.csv")
@@ -40,7 +40,6 @@ def save_track(track_id: int, artist: str, title: str):
             "artist": artist,
             "title": title
         })
-
 
 def get_votes(track_id: int):
     likes = neutral = dislikes = 0
@@ -59,10 +58,8 @@ def get_votes(track_id: int):
                     dislikes += 1
     return likes, neutral, dislikes
 
-
 def vote_keyboard(track_id: int):
     likes, neutral, dislikes = get_votes(track_id)
-
     kb = types.InlineKeyboardMarkup(row_width=3)
     kb.add(
         types.InlineKeyboardButton(f"❤️ {likes}", callback_data=f"vote:{track_id}:like"),
@@ -70,7 +67,6 @@ def vote_keyboard(track_id: int):
         types.InlineKeyboardButton(f"👎 {dislikes}", callback_data=f"vote:{track_id}:dislike"),
     )
     return kb
-
 
 # ================== ГОЛОСОВАНИЕ ==================
 
@@ -113,27 +109,39 @@ async def vote_handler(callback: types.CallbackQuery):
     await callback.message.edit_reply_markup(
         reply_markup=vote_keyboard(int(track_id))
     )
-
     await callback.answer("Твой голос учтён 👍")
 
+# ================== FSM ДЛЯ ПУБЛИКАЦИИ ==================
 
-# ================== ПУБЛИКАЦИЯ (АДМИН) ==================
+class PublishStates(StatesGroup):
+    waiting_for_audio = State()
+    waiting_for_artist = State()
+    waiting_for_title = State()
 
 @dp.message_handler(commands=["publish"])
-async def publish_track(message: types.Message):
+async def cmd_publish(message: types.Message):
     if not is_admin(message.from_user.id):
-        return
+        return await message.answer("Пришли MP3 файл")
+    await PublishStates.waiting_for_audio.set()
 
-    await message.answer("Пришли MP3 файл")
-    audio = await dp.wait_for(types.Message, content_types=types.ContentType.AUDIO)
-
+@dp.message_handler(content_types=types.ContentType.AUDIO, state=PublishStates.waiting_for_audio)
+async def process_audio(message: types.Message, state: FSMContext):
+    await state.update_data(audio_file_id=message.audio.file_id)
     await message.answer("Исполнитель?")
-    artist_msg = await dp.wait_for(types.Message)
-    artist = artist_msg.text.strip()
+    await PublishStates.waiting_for_artist.set()
 
+@dp.message_handler(state=PublishStates.waiting_for_artist)
+async def process_artist(message: types.Message, state: FSMContext):
+    await state.update_data(artist=message.text.strip())
     await message.answer("Название трека?")
-    title_msg = await dp.wait_for(types.Message)
-    title = title_msg.text.strip()
+    await PublishStates.waiting_for_title.set()
+
+@dp.message_handler(state=PublishStates.waiting_for_title)
+async def process_title(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    audio_file_id = data["audio_file_id"]
+    artist = data["artist"]
+    title = message.text.strip()
 
     track_id = get_next_track_id()
     save_track(track_id, artist, title)
@@ -147,16 +155,15 @@ async def publish_track(message: types.Message):
 
     await bot.send_audio(
         chat_id=CHANNEL_USERNAME,
-        audio=audio.audio.file_id,
+        audio=audio_file_id,
         caption=caption,
         parse_mode="HTML",
         reply_markup=vote_keyboard(track_id)
     )
-
     await message.answer("✅ Новинка опубликована")
-
+    await state.finish()
 
 # ================== ЗАПУСК ==================
 
-if __name__ == "__main__":
+if name == "__main__":
     executor.start_polling(dp, skip_updates=True)
