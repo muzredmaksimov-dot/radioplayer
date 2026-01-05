@@ -7,9 +7,9 @@ import csv
 import time
 
 # === НАСТРОЙКИ ===
-TOKEN = "ВАШ_ТОКЕН_БОТА"
+TOKEN = "8560880695:AAFUHhlq3kW_xP8gCd_Biv6q79S0VCoW8e4"
 ADMIN_CHAT_ID = 866964827  # ID админа
-CHANNEL_ID = "@RadioMIR_Efir"  # Официальный канал
+CHANNEL_ID = "@testposring"  # Официальный канал
 CSV_FILE = "tracks_stats.csv"
 
 bot = telebot.TeleBot(TOKEN)
