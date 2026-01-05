@@ -7,9 +7,9 @@ import telebot
 from telebot import types
 
 # === НАСТРОЙКИ ===
-TOKEN = os.environ.get("BOT_TOKEN", " 8560880695:AAGpb-pKAt28ydK5XFhnJ9wS32hGRzTWrTo")
-ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "866964827"))
-CHANNEL_ID = os.environ.get("CHANNEL_ID", 1002905716039")
+TOKEN = os.environ.get("BOT_TOKEN","8560880695:AAGpb-pKAt28ydK5XFhnJ9wS32hGRzTWrTo")
+ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID","866964827"))
+CHANNEL_ID = os.environ.get("CHANNEL_ID","1002905716039")
 
 CSV_FILE = "tracks_stats.csv"
 
