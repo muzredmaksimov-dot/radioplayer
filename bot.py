@@ -158,5 +158,5 @@ async def publish_track(message: types.Message):
 
 # ================== ЗАПУСК ==================
 
-if name == "__main__":
+if if name == "__main__":
     executor.start_polling(dp, skip_updates=True)
