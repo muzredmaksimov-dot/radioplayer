@@ -173,7 +173,7 @@ def index(): return "Music Channel Bot running!"
 def health(): return "OK"
 
 # === ЗАПУСК ===
-if name == "__main__":
+if __name__ == "__main__":
     print("🚀 Бот запущен")
     if "RENDER" in os.environ:
         bot.remove_webhook()
