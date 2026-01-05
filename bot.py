@@ -159,7 +159,7 @@ def auto_flush():
 threading.Thread(target=auto_flush, daemon=True).start()
 
 # === WEBHOOK / FLASK ===
-@app.route(f"/webhook/{TOKEN}", methods=["POST"])
+@app.route(f"https://radioplayer-tq0i.onrender.com/webhook/{TOKEN}", methods=["POST"])
 def webhook():
     if request.headers.get("content-type") == "application/json":
         update = telebot.types.Update.de_json(request.get_data().decode("utf-8"))
