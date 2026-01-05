@@ -1,145 +1,185 @@
-import csv
 import os
-from aiogram import Bot, Dispatcher, types
-from aiogram.utils.keyboard import InlineKeyboardBuilder
-from aiogram.filters import Command
-from config import BOT_TOKEN, CHANNEL_USERNAME, ADMIN_ID
+import telebot
+from telebot import types
+from flask import Flask, request
+import threading
+import csv
+import time
 
-bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher()
+# === НАСТРОЙКИ ===
+TOKEN = "ВАШ_ТОКЕН_БОТА"
+ADMIN_CHAT_ID = 866964827  # ID админа
+CHANNEL_ID = "@RadioMIR_Efir"  # Официальный канал
+CSV_FILE = "tracks_stats.csv"
 
-# ================== ВСПОМОГАТЕЛЬНОЕ ==================
+bot = telebot.TeleBot(TOKEN)
+app = Flask(__name__)
 
-def is_admin(user_id: int) -> bool:
-    return user_id == ADMIN_ID
+# === ХРАНИЛИЩЕ ТРЕКОВ ===
+track_states = {}  # {track_id: {"title": str, "likes": int, "super": int, "dislikes": int, "message_id": int}}
 
-async def is_subscriber(user_id: int) -> bool:
+buffer_lock = threading.Lock()
+result_buffer = []  # временный буфер строк CSV
+
+# === УТИЛИТЫ ===
+def save_buffer_to_csv():
+    with buffer_lock:
+        if not track_states:
+            return
+        with open(CSV_FILE, "w", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            w.writerow(["title", "likes", "super", "dislikes"])
+            for t in track_states.values():
+                w.writerow([t["title"], t["likes"], t["super"], t["dislikes"]])
+
+# === ОТПРАВКА ТРЕКА ===
+def send_track_to_channel(title, audio_file_path):
+    kb = types.InlineKeyboardMarkup(row_width=3)
+    kb.add(
+        types.InlineKeyboardButton(f"👍 0", callback_data=f"like_0"),
+        types.InlineKeyboardButton(f"🔥 0", callback_data=f"super_0"),
+        types.InlineKeyboardButton(f"👎 0", callback_data=f"dislike_0")
+    )
+    with open(audio_file_path, "rb") as f:
+        msg = bot.send_audio(CHANNEL_ID, f, title=title, reply_markup=kb)
+        # Сохраняем трек в память
+        track_states[msg.message_id] = {"title": title, "likes": 0, "super": 0, "dislikes": 0, "message_id": msg.message_id}
+
+# === РЕАКЦИИ ===
+@bot.callback_query_handler(func=lambda c: c.data.startswith(("like_", "super_", "dislike_")))
+def handle_reaction(c):
+    chat_id = c.message.chat.id
+    msg_id = c.message.message_id
+    track = track_states.get(msg_id)
+    if not track:
+        return
+
+    reaction = c.data.split("_")[0]
+    if reaction == "like":
+        track["likes"] += 1
+    elif reaction == "super":
+        track["super"] += 1
+    elif reaction == "dislike":
+        track["dislikes"] += 1
+
+    # Обновляем кнопки с новым счетом
+    kb = types.InlineKeyboardMarkup(row_width=3)
+    kb.add(
+        types.InlineKeyboardButton(f"👍 {track['likes']}", callback_data=f"like_0"),
+        types.InlineKeyboardButton(f"🔥 {track['super']}", callback_data=f"super_0"),
+        types.InlineKeyboardButton(f"👎 {track['dislikes']}", callback_data=f"dislike_0")
+    )
     try:
-        member = await bot.get_chat_member(CHANNEL_USERNAME, user_id)
-        return member.status in ("member", "administrator", "creator")
+        bot.edit_message_reply_markup(CHANNEL_ID, msg_id, reply_markup=kb)
     except:
-        return False
+        pass
 
-def get_next_track_id() -> int:
-    if not os.path.exists("tracks.csv"):
-        return 1
-    with open("tracks.csv", newline="", encoding="utf-8") as f:
-        rows = list(csv.DictReader(f))
-        return len(rows) + 1
+    c.answer()  # убираем "часики"
 
-def save_track(track_id: int, artist: str, title: str):
-    file_exists = os.path.exists("tracks.csv")
-    with open("tracks.csv", "a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=["track_id", "artist", "title"])
-        if not file_exists:
-            writer.writeheader()
-        writer.writerow({
-            "track_id": track_id,
-            "artist": artist,
-            "title": title
-        })
-
-def get_votes(track_id: int):
-    likes = neutral = dislikes = 0
-    if not os.path.exists("votes.csv"):
-        return likes, neutral, dislikes
-
-    with open("votes.csv", newline="", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            if row["track_id"] == str(track_id):
-                if row["vote"] == "like":
-                    likes += 1
-                elif row["vote"] == "neutral":
-                    neutral += 1
-                elif row["vote"] == "dislike":
-                    dislikes += 1
-    return likes, neutral, dislikes
-
-def vote_keyboard(track_id: int):
-    likes, neutral, dislikes = get_votes(track_id)
-    kb = InlineKeyboardBuilder()
-    kb.row(
-        types.InlineKeyboardButton(text=f"❤️ {likes}", callback_data=f"vote:{track_id}:like"),
-        types.InlineKeyboardButton(text=f"😐 {neutral}", callback_data=f"vote:{track_id}:neutral"),
-        types.InlineKeyboardButton(text=f"👎 {dislikes}", callback_data=f"vote:{track_id}:dislike")
-    )
-    return kb.as_markup()
-
-# ================== ГОЛОСОВАНИЕ ==================
-
-@dp.callback_query(lambda c: c.data.startswith("vote:"))
-async def vote_handler(callback: types.CallbackQuery):
-    _, track_id, vote = callback.data.split(":")
-    user_id = callback.from_user.id
-
-    if not await is_subscriber(user_id):
-        await callback.answer("Голосовать могут только подписчики канала 📻", show_alert=True)
+# === АДМИН: ТОП-3 ===
+@bot.message_handler(commands=["top"])
+def top_command(m):
+    if m.chat.id != ADMIN_CHAT_ID:
+        bot.send_message(m.chat.id, "⛔ У вас нет доступа к этой команде.")
         return
 
-    rows = []
-    updated = False
-
-    if os.path.exists("votes.csv"):
-        with open("votes.csv", newline="", encoding="utf-8") as f:
-            rows = list(csv.DictReader(f))
-
-    for row in rows:
-        if row["track_id"] == track_id and row["user_id"] == str(user_id):
-            row["vote"] = vote
-            updated = True
-
-    if not updated:
-        rows.append({"track_id": track_id, "user_id": str(user_id), "vote": vote})
-
-    with open("votes.csv", "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=["track_id", "user_id", "vote"])
-        writer.writeheader()
-        writer.writerows(rows)
-
-    await callback.message.edit_reply_markup(reply_markup=vote_keyboard(int(track_id)))
-    await callback.answer("Твой голос учтён 👍")
-
-# ================== ПУБЛИКАЦИЯ (АДМИН) ==================
-
-@dp.message(Command("publish"))
-async def publish_track(message: types.Message):
-    if not is_admin(message.from_user.id):
+    if not track_states:
+        bot.send_message(ADMIN_CHAT_ID, "📊 Пока нет опубликованных треков.")
         return
 
-    await message.answer("Пришли MP3 файл")
-    audio = await bot.wait_for("message", content_types=types.ContentType.AUDIO)
+    def top_n(key, n=3):
+        return sorted(track_states.values(), key=lambda x: x[key], reverse=True)[:n]
 
-    await message.answer("Исполнитель?")
-    artist_msg = await bot.wait_for("message")
-    artist = artist_msg.text.strip()
+    top_likes = top_n("likes")
+    top_super = top_n("super")
+    top_dislikes = top_n("dislikes")
 
-    await message.answer("Название трека?")
-    title_msg = await bot.wait_for("message")
-    title = title_msg.text.strip()
+    msg_lines = ["🔥 Топ-3 трека по реакциям:"]
+    msg_lines.append("\n👍 Лайки:")
+    for t in top_likes:
+        msg_lines.append(f"{t['title']} — {t['likes']}")
+    msg_lines.append("\n🔥 Супер:")
+    for t in top_super:
+        msg_lines.append(f"{t['title']} — {t['super']}")
+    msg_lines.append("\n👎 Дизлайки:")
+    for t in top_dislikes:
+        msg_lines.append(f"{t['title']} — {t['dislikes']}")
 
-    track_id = get_next_track_id()
-    save_track(track_id, artist, title)
+    bot.send_message(ADMIN_CHAT_ID, "\n".join(msg_lines))
 
-    caption = (
-        "🎧 <b>Новинка на радио</b>\n\n"
-        f"🎤 <b>Исполнитель:</b> {artist}\n"
-        f"🎵 <b>Трек:</b> {title}\n\n"
-        "▶️ Послушай трек и оцени — твой голос влияет на эфир 👇"
+# === АДМИН: ПУБЛИКАЦИЯ ТОПА В КАНАЛ ===
+@bot.message_handler(commands=["publish_top"])
+def publish_top_command(m):
+    if m.chat.id != ADMIN_CHAT_ID:
+        bot.send_message(m.chat.id, "⛔ У вас нет доступа к этой команде.")
+        return
+
+    if not track_states:
+        bot.send_message(ADMIN_CHAT_ID, "📊 Нет треков для публикации.")
+        return
+
+    # Формируем текст топа
+    def top_n_text(key, n=3):
+        t = sorted(track_states.values(), key=lambda x: x[key], reverse=True)[:n]
+        return "\n".join([f"{x['title']} — {x[key]}" for x in t])
+
+    text = (
+        "🔥 Топ-3 треков по реакциям:\n\n"
+        f"👍 Лайки:\n{top_n_text('likes')}\n\n"
+        f"🔥 Супер:\n{top_n_text('super')}\n\n"
+        f"👎 Дизлайки:\n{top_n_text('dislikes')}"
     )
 
-    await bot.send_audio(
-        chat_id=CHANNEL_USERNAME,
-        audio=audio.audio.file_id,
-        caption=caption,
-        parse_mode="HTML",
-        reply_markup=vote_keyboard(track_id)
-    )
+    bot.send_message(CHANNEL_ID, text)
+    bot.send_message(ADMIN_CHAT_ID, "✅ Топ успешно опубликован в канал.")
 
-    await message.answer("✅ Новинка опубликована")
+# === АДМИН: ЗАГРУЗКА ТРЕКОВ ИЗ ЛИЧКИ ===
+@bot.message_handler(content_types=["audio"])
+def handle_admin_audio(m):
+    if m.chat.id != ADMIN_CHAT_ID:
+        return
 
-# ================== ЗАПУСК ==================
+    title = m.audio.title or "Без названия"
+    file_info = bot.get_file(m.audio.file_id)
+    file_path = f"tracks/{title}.mp3"
+    os.makedirs("tracks", exist_ok=True)
+    downloaded_file = bot.download_file(file_info.file_path)
+    with open(file_path, "wb") as f:
+        f.write(downloaded_file)
 
+    send_track_to_channel(title, file_path)
+    bot.send_message(ADMIN_CHAT_ID, f"✅ Трек '{title}' опубликован в канал.")
+
+# === FLUSH CSV ПЕРИОДИЧЕСКИ ===
+def auto_flush():
+    while True:
+        time.sleep(120)
+        save_buffer_to_csv()
+
+threading.Thread(target=auto_flush, daemon=True).start()
+
+# === WEBHOOK / FLASK ===
+@app.route(f"/webhook/{TOKEN}", methods=["POST"])
+def webhook():
+    if request.headers.get("content-type") == "application/json":
+        update = telebot.types.Update.de_json(request.get_data().decode("utf-8"))
+        bot.process_new_updates([update])
+        return ""
+    return "Bad Request", 400
+
+@app.route("/")
+def index(): return "Music Channel Bot running!"
+@app.route("/health")
+def health(): return "OK"
+
+# === ЗАПУСК ===
 if name == "__main__":
-    from aiogram import asyncio
-    asyncio.run(dp.start_polling(bot))
+    print("🚀 Бот запущен")
+    if "RENDER" in os.environ:
+        bot.remove_webhook()
+        time.sleep(1)
+        bot.set_webhook(url=f"https://your-app-name.onrender.com/webhook/{TOKEN}")
+        app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    else:
+        bot.remove_webhook()
+        bot.polling(none_stop=True)
