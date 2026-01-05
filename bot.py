@@ -62,6 +62,17 @@ def build_keyboard(track_id):
     return kb
 
 # === ОБРАБОТКА РЕАКЦИЙ ===
+@bot.message_handler(commands=["start"])
+def start(message):
+    bot.send_message(
+        message.chat.id,
+        "🎧 Music Channel Bot запущен\n\n"
+        "Для админа:\n"
+        "/publish — опубликовать трек\n"
+        "/stats — статистика\n"
+        "/top — топ треков"
+    )
+    
 @bot.callback_query_handler(func=lambda c: any(c.data.startswith(p) for p in ["like_", "meh_", "dislike_"]))
 def handle_reaction(c):
     action, track_id = c.data.split("_")
@@ -126,6 +137,14 @@ def webhook():
 def index(): return "Music Channel Bot running!"
 @app.route("/health")
 def health(): return "OK"
+
+@app.route(f"/webhook/{TOKEN}", methods=["POST"])
+def webhook():
+    raw = request.get_data().decode("utf-8")
+    print("📩 UPDATE:", raw)   # ← ОЧЕНЬ ВАЖНО
+    update = telebot.types.Update.de_json(raw)
+    bot.process_new_updates([update])
+    return "", 200
 
 # === ЗАПУСК ===
 if __name__ == "__main__":
