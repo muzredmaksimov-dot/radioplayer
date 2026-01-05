@@ -178,7 +178,7 @@ if __name__ == "__main__":
     if "RENDER" in os.environ:
         bot.remove_webhook()
         time.sleep(1)
-        bot.set_webhook(url=f"https://your-app-name.onrender.com/webhook/{TOKEN}")
+        bot.set_webhook(url=f"https://radioplayer-tq0i.onrender.com/webhook/{TOKEN}")
         app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
     else:
         bot.remove_webhook()
