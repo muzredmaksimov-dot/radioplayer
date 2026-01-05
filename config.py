@@ -1,9 +1,3 @@
-import os
-
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-
-# 🔴 ПОСЛЕ ТЕСТА МЕНЯЕШЬ ТОЛЬКО ЭТО
-CHANNEL_USERNAME = "@testposring"
-
-# твой Telegram ID
-ADMIN_ID = 866964827
+BOT_TOKEN = "8560880695:AAFUHhlq3kW_xP8gCd_Biv6q79S0VCoW8e4"
+CHANNEL_USERNAME = "test111"
+ADMIN_ID = 866964827  # ваш Telegram ID
