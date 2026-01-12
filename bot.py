@@ -1,196 +1,201 @@
 import os
-import csv
-import time
-import base64
-import requests
-import threading
 import telebot
+import time
+import csv
 from telebot import types
 from flask import Flask, request
+import requests
+import base64
+import threading
 
-# ========= НАСТРОЙКИ =========
-TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")  # строкой
-CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME")  # @RadioMIR_Efir
-
-CSV_FILE = "alice_friday_results.csv"
+# === НАСТРОЙКИ ===
+TOKEN = os.environ.get("BOT_TOKEN")  # ставь токен в Render ENV
+ADMIN_CHAT_ID = os.environ.get("ADMIN_CHAT_ID")  # ставь id админа в ENV
+CSV_FILE = "backup_results.csv"
 SUBSCRIBERS_FILE = "subscribers.txt"
-
-GITHUB_REPO = os.getenv("GITHUB_REPO")
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
-
-CURRENT_ARTIST = "Алиса"
-# ============================
+GITHUB_REPO = "muzredmaksimov-dot/radioplayer_results"
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
+# === ХРАНИЛИЩЕ ===
+user_last_message = {}
 user_states = {}
-result_buffer = []
 buffer_lock = threading.Lock()
+result_buffer = []
 
-# ========= GITHUB =========
-def github_read(path):
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{path}"
-    headers = {"Authorization": f"token {GITHUB_TOKEN}"} if GITHUB_TOKEN else {}
-    r = requests.get(url, headers=headers)
-    if r.status_code == 200:
-        return base64.b64decode(r.json()["content"]).decode("utf-8")
-    return ""
+# === СООБЩЕНИЯ ===
+def send_message(chat_id, text, reply_markup=None, parse_mode=None):
+    try:
+        msg = bot.send_message(chat_id, text, reply_markup=reply_markup, parse_mode=parse_mode)
+        user_last_message.setdefault(chat_id, []).append(msg.message_id)
+        return msg
+    except Exception as e:
+        print("Ошибка отправки:", e)
 
-def github_write(path, content, msg):
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{path}"
-    headers = {"Authorization": f"token {GITHUB_TOKEN}"} if GITHUB_TOKEN else {}
-    r = requests.get(url, headers=headers)
-    payload = {
-        "message": msg,
-        "content": base64.b64encode(content.encode()).decode()
-    }
-    if r.status_code == 200:
-        payload["sha"] = r.json()["sha"]
-    requests.put(url, headers=headers, json=payload)
+def cleanup_chat(chat_id):
+    for msg_id in user_last_message.get(chat_id, []):
+        try:
+            bot.delete_message(chat_id, msg_id)
+        except:
+            pass
+    user_last_message[chat_id] = []
 
-def github_append(path, line, header=None):
-    existing = github_read(path)
-    if not existing and header:
-        new = header + "\n" + line + "\n"
+# === GITHUB UTILS ===
+def github_read_file(repo, path, token):
+    try:
+        url = f"https://api.github.com/repos/{repo}/contents/{path}"
+        headers = {"Authorization": f"token {token}"} if token else {}
+        r = requests.get(url, headers=headers)
+        if r.status_code == 200:
+            content_b64 = r.json().get("content", "")
+            return base64.b64decode(content_b64).decode("utf-8")
+        return ""
+    except Exception as e:
+        print("GitHub read error:", e)
+        return ""
+
+def github_write_file(repo, path, token, content, commit_msg):
+    try:
+        url = f"https://api.github.com/repos/{repo}/contents/{path}"
+        headers = {"Authorization": f"token {token}"} if token else {}
+        r_get = requests.get(url, headers=headers)
+        b64 = base64.b64encode(content.encode("utf-8")).decode("utf-8")
+        payload = {"message": commit_msg, "content": b64}
+        if r_get.status_code == 200:
+            payload["sha"] = r_get.json().get("sha")
+        r_put = requests.put(url, headers=headers, json=payload)
+        return r_put.status_code in (200, 201)
+    except Exception as e:
+        print("GitHub write error:", e)
+        return False
+
+def github_append_line(repo, path, token, line, header_if_missing=None):
+    existing = github_read_file(repo, path, token)
+    if not existing:
+        new_text = (header_if_missing + "\n" if header_if_missing else "") + line + "\n"
     else:
-        new = existing.rstrip() + "\n" + line + "\n"
-    github_write(path, new, f"Update {path}")
+        if not existing.endswith("\n"):
+            existing += "\n"
+        new_text = existing + line + "\n"
+    return github_write_file(repo, path, token, new_text, f"Update {path}")
 
-# ========= СТАРТ =========
+# === СТАРТ ===
 @bot.message_handler(commands=["start"])
 def start(message):
     chat_id = message.chat.id
-
-    try:
-        member = bot.get_chat_member(CHANNEL_USERNAME, chat_id)
-        if member.status not in ("member", "administrator", "creator"):
-            raise Exception
-    except:
-        bot.send_message(
-            chat_id,
-            "Для участия подпишитесь на канал «Радио МИР|Эфир» 👇\n"
-            f"https://t.me/{CHANNEL_USERNAME.replace('@','')}"
-        )
-        return
-
-    subs = github_read(SUBSCRIBERS_FILE).splitlines()
-    if str(chat_id) not in subs:
-        subs.append(str(chat_id))
-        github_write(SUBSCRIBERS_FILE, "\n".join(subs), "Add subscriber")
-
+    cleanup_chat(chat_id)
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("🎸 Начать игру", callback_data="start_game"))
-    bot.send_message(
-        chat_id,
-        f"🎶 *Алиса по пятницам*\n\n"
-        f"Соберите 3 трека группы «{CURRENT_ARTIST}» в правильном порядке.",
-        reply_markup=kb,
-        parse_mode="Markdown"
-    )
+    kb.add(types.InlineKeyboardButton("🚀 Начать игру", callback_data="start_game"))
+    send_message(chat_id,
+                 "Привет! 🎵\nЧтобы участвовать в игре «Алиса по пятницам», нужно собрать три трека в правильном порядке.\n\n"
+                 "Нажмите кнопку ниже, чтобы начать.",
+                 reply_markup=kb)
 
-# ========= ИГРА =========
 @bot.callback_query_handler(func=lambda c: c.data == "start_game")
 def start_game(c):
     chat_id = c.message.chat.id
-    user_states[chat_id] = {}
-    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add(types.KeyboardButton("📱 Отправить номер", request_contact=True))
-    bot.send_message(chat_id, "Отправьте номер телефона:", reply_markup=kb)
-
-@bot.message_handler(content_types=["contact"])
-def phone(message):
-    chat_id = message.chat.id
-    user_states[chat_id]["phone"] = message.contact.phone_number
-    bot.send_message(chat_id, "Введите ФИО:", reply_markup=types.ReplyKeyboardRemove())
-
-@bot.message_handler(func=lambda m: m.chat.id in user_states and "name" not in user_states[m.chat.id])
-def name(message):
-    chat_id = message.chat.id
-    user_states[chat_id]["name"] = message.text
-    bot.send_message(chat_id, f"Трек №1 группы «{CURRENT_ARTIST}»:")
-
-@bot.message_handler(func=lambda m: m.chat.id in user_states and "track1" not in user_states[m.chat.id])
-def track1(message):
-    user_states[message.chat.id]["track1"] = message.text
-    bot.send_message(message.chat.id, "Трек №2:")
-
-@bot.message_handler(func=lambda m: m.chat.id in user_states and "track2" not in user_states[m.chat.id])
-def track2(message):
-    user_states[message.chat.id]["track2"] = message.text
-    bot.send_message(message.chat.id, "Трек №3:")
-
-@bot.message_handler(func=lambda m: m.chat.id in user_states and "track3" not in user_states[m.chat.id])
-def track3(message):
-    chat_id = message.chat.id
-    user_states[chat_id]["track3"] = message.text
-
-    row = [
-        user_states[chat_id]["name"],
-        user_states[chat_id]["phone"],
-        user_states[chat_id]["track1"],
-        user_states[chat_id]["track2"],
-        user_states[chat_id]["track3"],
-    ]
-
-    with buffer_lock:
-        result_buffer.append(row)
-
-    bot.send_message(chat_id, "✅ Спасибо за участие!\nСледите за результатами в канале Радио МИР|Эфир 🎉")
-    del user_states[chat_id]
-
-# ========= ADMIN =========
-@bot.message_handler(commands=["results"])
-def results(message):
-    if str(message.chat.id) != ADMIN_CHAT_ID:
-        return
-    push_buffer()
-    content = github_read(CSV_FILE)
-    tmp = "/tmp/results.csv"
-    open(tmp, "w", encoding="utf-8").write(content)
-    with open(tmp, "rb") as f:
-        bot.send_document(message.chat.id, f)
-
-@bot.message_handler(commands=["reset"])
-def reset(message):
-    if str(message.chat.id) != ADMIN_CHAT_ID:
-        return
-    header = "ФИО|Телефон|Трек1|Трек2|Трек3"
-    github_write(CSV_FILE, header + "\n", "Reset game")
-    bot.send_message(message.chat.id, "🔄 Игра сброшена")
-
-# ========= BUFFER =========
-def push_buffer():
-    with buffer_lock:
-        if not result_buffer:
+    try:
+        bot.delete_message(chat_id, c.message.message_id)
+    except:
+        pass
+    # Проверка подписки
+    channel = "@RadioMIR_Efir"
+    try:
+        status = bot.get_chat_member(channel, chat_id).status
+        if status not in ["member", "administrator", "creator"]:
+            kb = types.InlineKeyboardMarkup()
+            kb.add(types.InlineKeyboardButton("Подписаться на канал", url=f"https://t.me/{channel[1:]}"))
+            send_message(chat_id,
+                         "Для участия подпишитесь на канал «Radio MIR | Эфир»",
+                         reply_markup=kb)
             return
-        header = "ФИО|Телефон|Трек1|Трек2|Трек3"
-        for r in result_buffer:
-            github_append(CSV_FILE, "|".join(r), header)
-        result_buffer.clear()
+    except:
+        send_message(chat_id, "Для участия подпишитесь на канал «Radio MIR | Эфир»")
+        return
 
-def auto_flush():
-    while True:
-        time.sleep(120)
-        push_buffer()
+    # Начало игры: запрос телефона
+    msg = send_message(chat_id, "Оставьте свой номер телефона:")
+    user_states[chat_id] = {"step": "phone", "data": {}}
 
-threading.Thread(target=auto_flush, daemon=True).start()
+@bot.message_handler(func=lambda m: True)
+def handle_input(message):
+    chat_id = message.chat.id
+    state = user_states.get(chat_id)
+    if not state:
+        return
 
-# ========= WEBHOOK =========
-@app.route(f"/webhook/{TOKEN}", methods=["POST"])
+    step = state.get("step")
+    text = message.text.strip()
+
+    if step == "phone":
+        state["data"]["phone"] = text
+        state["step"] = "fio"
+        send_message(chat_id, "Укажите ФИО:")
+    elif step == "fio":
+        state["data"]["fio"] = text
+        state["step"] = "track1"
+        send_message(chat_id, "Введите первый трек:")
+    elif step == "track1":
+        state["data"]["track1"] = text
+        state["step"] = "track2"
+        send_message(chat_id, "Введите второй трек:")
+    elif step == "track2":
+        state["data"]["track2"] = text
+        state["step"] = "track3"
+        send_message(chat_id, "Введите третий трек:")
+    elif step == "track3":
+        state["data"]["track3"] = text
+        # Сохраняем на GitHub
+        line = f"{state['data']['fio']}|{state['data']['phone']}|{state['data']['track1']}|{state['data']['track2']}|{state['data']['track3']}"
+        github_append_line(GITHUB_REPO, CSV_FILE, GITHUB_TOKEN, line, header_if_missing="ФИО|номер телефона|трек1|трек2|трек3")
+        send_message(chat_id, "Спасибо за участие! Следите за результатами в @RadioMIR_Efir")
+        user_states.pop(chat_id, None)
+
+# === PUSH BUFFER (если нужен) ===
+def push_buffer_to_github():
+    pass  # пока все сразу пишем
+
+# === КОМАНДЫ АДМИНА ===
+@bot.message_handler(commands=["reset"])
+def reset_game(message):
+    if str(message.chat.id) != ADMIN_CHAT_ID:
+        send_message(message.chat.id, "⛔ Нет доступа")
+        return
+    github_write_file(GITHUB_REPO, CSV_FILE, GITHUB_TOKEN, "ФИО|номер телефона|трек1|трек2|трек3\n", "Reset game")
+    send_message(message.chat.id, "✅ Данные сброшены")
+
+@bot.message_handler(commands=["results"])
+def get_results(message):
+    if str(message.chat.id) != ADMIN_CHAT_ID:
+        send_message(message.chat.id, "⛔ Нет доступа")
+        return
+    content = github_read_file(GITHUB_REPO, CSV_FILE, GITHUB_TOKEN)
+    tmp_path = "/tmp/backup_results.csv"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        f.write(content)
+    with open(tmp_path, "rb") as f:
+        bot.send_document(message.chat.id, f, caption="Результаты игры")
+
+# === FLASK WEBHOOK ===
+@app.route(f'/webhook/{TOKEN}', methods=['POST'])
 def webhook():
-    update = telebot.types.Update.de_json(request.get_data().decode("utf-8"))
-    bot.process_new_updates([update])
-    return "ok"
+    if request.headers.get("content-type") == "application/json":
+        update = telebot.types.Update.de_json(request.get_data().decode("utf-8"))
+        bot.process_new_updates([update])
+        return ""
+    return "Bad Request", 400
 
-@app.route("/")
-def index():
-    return "Alice Friday Bot running"
+@app.route('/')
+def index(): return "Алиса по пятницам бот работает!"
+@app.route('/health')
+def health(): return "OK"
 
-# ========= RUN =========
 if __name__ == "__main__":
+    print("🚀 Бот запущен")
     bot.remove_webhook()
     time.sleep(1)
-    bot.set_webhook(url=f"https://YOUR-RENDER-URL.onrender.com/webhook/{TOKEN}")
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 10000)))
+    RENDER_URL = os.environ.get("RENDER_EXTERNAL_URL")  # Render автоматически выставляет эту ENV
+    bot.set_webhook(url=f"{RENDER_URL}/webhook/{TOKEN}")
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
