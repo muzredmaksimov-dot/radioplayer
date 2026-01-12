@@ -9,8 +9,8 @@ import base64
 import threading
 
 # === НАСТРОЙКИ ===
-TOKEN = os.environ.get("BOT_TOKEN")  # ставь токен в Render ENV
-ADMIN_CHAT_ID = os.environ.get("ADMIN_CHAT_ID")  # ставь id админа в ENV
+TOKEN = os.environ.get("BOT_TOKEN")       # токен бота в Render ENV
+ADMIN_CHAT_ID = os.environ.get("ADMIN_CHAT_ID")  # id админа
 CSV_FILE = "backup_results.csv"
 SUBSCRIBERS_FILE = "subscribers.txt"
 GITHUB_REPO = "muzredmaksimov-dot/radioplayer_results"
@@ -93,6 +93,7 @@ def start(message):
                  "Нажмите кнопку ниже, чтобы начать.",
                  reply_markup=kb)
 
+# === ЗАПУСК ИГРЫ ===
 @bot.callback_query_handler(func=lambda c: c.data == "start_game")
 def start_game(c):
     chat_id = c.message.chat.id
@@ -100,25 +101,27 @@ def start_game(c):
         bot.delete_message(chat_id, c.message.message_id)
     except:
         pass
-    # Проверка подписки
-    channel = "@RadioMIR_Efir"
+
+    # Проверка подписки на тестовый канал
+    channel = "@test111"
     try:
-        status = bot.get_chat_member(channel, chat_id).status
-        if status not in ["member", "administrator", "creator"]:
+        member = bot.get_chat_member(channel, chat_id)
+        if member.status not in ["member", "administrator", "creator"]:
             kb = types.InlineKeyboardMarkup()
             kb.add(types.InlineKeyboardButton("Подписаться на канал", url=f"https://t.me/{channel[1:]}"))
             send_message(chat_id,
-                         "Для участия подпишитесь на канал «Radio MIR | Эфир»",
+                         "Для участия подпишитесь на канал «test111»",
                          reply_markup=kb)
             return
-    except:
-        send_message(chat_id, "Для участия подпишитесь на канал «Radio MIR | Эфир»")
-        return
+    except Exception as e:
+        print(f"⚠️ Не удалось проверить подписку пользователя {chat_id}: {e}")
+        send_message(chat_id, "⚠️ Не удалось проверить подписку, но игра продолжается (тестовый режим)")
 
     # Начало игры: запрос телефона
     msg = send_message(chat_id, "Оставьте свой номер телефона:")
     user_states[chat_id] = {"step": "phone", "data": {}}
 
+# === ОБРАБОТКА ВВОДА ===
 @bot.message_handler(func=lambda m: True)
 def handle_input(message):
     chat_id = message.chat.id
@@ -147,15 +150,10 @@ def handle_input(message):
         send_message(chat_id, "Введите третий трек:")
     elif step == "track3":
         state["data"]["track3"] = text
-        # Сохраняем на GitHub
         line = f"{state['data']['fio']}|{state['data']['phone']}|{state['data']['track1']}|{state['data']['track2']}|{state['data']['track3']}"
         github_append_line(GITHUB_REPO, CSV_FILE, GITHUB_TOKEN, line, header_if_missing="ФИО|номер телефона|трек1|трек2|трек3")
-        send_message(chat_id, "Спасибо за участие! Следите за результатами в @RadioMIR_Efir")
+        send_message(chat_id, "Спасибо за участие! Следите за результатами в @test111")
         user_states.pop(chat_id, None)
-
-# === PUSH BUFFER (если нужен) ===
-def push_buffer_to_github():
-    pass  # пока все сразу пишем
 
 # === КОМАНДЫ АДМИНА ===
 @bot.message_handler(commands=["reset"])
@@ -196,6 +194,6 @@ if __name__ == "__main__":
     print("🚀 Бот запущен")
     bot.remove_webhook()
     time.sleep(1)
-    RENDER_URL = os.environ.get("RENDER_EXTERNAL_URL")  # Render автоматически выставляет эту ENV
+    RENDER_URL = os.environ.get("RENDER_EXTERNAL_URL")
     bot.set_webhook(url=f"{RENDER_URL}/webhook/{TOKEN}")
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
