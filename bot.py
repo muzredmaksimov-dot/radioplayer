@@ -1,224 +1,196 @@
 import os
 import csv
-import subprocess
-from datetime import datetime
+import time
+import base64
+import requests
+import threading
+import telebot
+from telebot import types
+from flask import Flask, request
 
-from aiogram import Bot, Dispatcher, F
-from aiogram.types import (
-    Message,
-    KeyboardButton,
-    ReplyKeyboardMarkup,
-    ReplyKeyboardRemove,
-    InputFile
-)
-from aiogram.filters import Command
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.fsm.storage.memory import MemoryStorage
+# ========= НАСТРОЙКИ =========
+TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")  # строкой
+CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME")  # @RadioMIR_Efir
 
+CSV_FILE = "alice_friday_results.csv"
+SUBSCRIBERS_FILE = "subscribers.txt"
 
-# ================= НАСТРОЙКИ =================
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME")   # @radiomir_efir
-ADMIN_IDS = {int(x) for x in os.getenv("ADMIN_IDS").split(",")}
-
+GITHUB_REPO = os.getenv("GITHUB_REPO")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
-GITHUB_REPO = os.getenv("GITHUB_REPO")             # user/repo
-GITHUB_BRANCH = os.getenv("GITHUB_BRANCH", "main")
 
-CSV_FILE = "results.csv"
-current_artist = "Алиса"
-played_users = set()
-# =============================================
+CURRENT_ARTIST = "Алиса"
+# ============================
 
+bot = telebot.TeleBot(TOKEN)
+app = Flask(__name__)
 
-bot = Bot(BOT_TOKEN)
-dp = Dispatcher(storage=MemoryStorage())
+user_states = {}
+result_buffer = []
+buffer_lock = threading.Lock()
 
+# ========= GITHUB =========
+def github_read(path):
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{path}"
+    headers = {"Authorization": f"token {GITHUB_TOKEN}"} if GITHUB_TOKEN else {}
+    r = requests.get(url, headers=headers)
+    if r.status_code == 200:
+        return base64.b64decode(r.json()["content"]).decode("utf-8")
+    return ""
 
-# ================= GIT =================
-def setup_git():
-    repo_url = f"https://{GITHUB_TOKEN}@github.com/{GITHUB_REPO}.git"
-    subprocess.run(["git", "remote", "set-url", "origin", repo_url], check=False)
-    subprocess.run(["git", "checkout", GITHUB_BRANCH], check=False)
+def github_write(path, content, msg):
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{path}"
+    headers = {"Authorization": f"token {GITHUB_TOKEN}"} if GITHUB_TOKEN else {}
+    r = requests.get(url, headers=headers)
+    payload = {
+        "message": msg,
+        "content": base64.b64encode(content.encode()).decode()
+    }
+    if r.status_code == 200:
+        payload["sha"] = r.json()["sha"]
+    requests.put(url, headers=headers, json=payload)
 
+def github_append(path, line, header=None):
+    existing = github_read(path)
+    if not existing and header:
+        new = header + "\n" + line + "\n"
+    else:
+        new = existing.rstrip() + "\n" + line + "\n"
+    github_write(path, new, f"Update {path}")
 
-def git_commit_and_push():
-    subprocess.run(["git", "add", CSV_FILE], check=False)
-    subprocess.run(
-        ["git", "commit", "-m", f"Game entry {datetime.now()}"],
-        check=False
-    )
-    subprocess.run(["git", "push"], check=False)
-# =======================================
+# ========= СТАРТ =========
+@bot.message_handler(commands=["start"])
+def start(message):
+    chat_id = message.chat.id
 
-
-# ================= CSV =================
-def init_csv():
-    if not os.path.exists(CSV_FILE):
-        with open(CSV_FILE, "w", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f, delimiter="|")
-            writer.writerow(["ФИО", "Телефон", "Трек 1", "Трек 2", "Трек 3"])
-        git_commit_and_push()
-
-
-def save_result(row):
-    with open(CSV_FILE, "a", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f, delimiter="|")
-        writer.writerow(row)
-    git_commit_and_push()
-# =======================================
-
-
-# ================= FSM =================
-class GameForm(StatesGroup):
-    phone = State()
-    name = State()
-    track1 = State()
-    track2 = State()
-    track3 = State()
-# =======================================
-
-
-# ================= UTILS =================
-async def is_subscribed(user_id: int) -> bool:
     try:
-        member = await bot.get_chat_member(CHANNEL_USERNAME, user_id)
-        return member.status in ("member", "administrator", "creator")
+        member = bot.get_chat_member(CHANNEL_USERNAME, chat_id)
+        if member.status not in ("member", "administrator", "creator"):
+            raise Exception
     except:
-        return False
-# ========================================
-
-
-# ================= START =================
-@dp.message(Command("start"))
-async def start_game(message: Message, state: FSMContext):
-    if not await is_subscribed(message.from_user.id):
-        await message.answer(
+        bot.send_message(
+            chat_id,
             "Для участия подпишитесь на канал «Радио МИР|Эфир» 👇\n"
-            f"https://t.me/{CHANNEL_USERNAME.replace('@', '')}"
+            f"https://t.me/{CHANNEL_USERNAME.replace('@','')}"
         )
         return
 
-    kb = ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="Отправить номер", request_contact=True)]],
-        resize_keyboard=True
+    subs = github_read(SUBSCRIBERS_FILE).splitlines()
+    if str(chat_id) not in subs:
+        subs.append(str(chat_id))
+        github_write(SUBSCRIBERS_FILE, "\n".join(subs), "Add subscriber")
+
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("🎸 Начать игру", callback_data="start_game"))
+    bot.send_message(
+        chat_id,
+        f"🎶 *Алиса по пятницам*\n\n"
+        f"Соберите 3 трека группы «{CURRENT_ARTIST}» в правильном порядке.",
+        reply_markup=kb,
+        parse_mode="Markdown"
     )
 
-    await message.answer(
-        "Оставьте номер телефона — он понадобится, если вы победите 📞",
-        reply_markup=kb
-    )
-    await state.set_state(GameForm.phone)
-# ========================================
+# ========= ИГРА =========
+@bot.callback_query_handler(func=lambda c: c.data == "start_game")
+def start_game(c):
+    chat_id = c.message.chat.id
+    user_states[chat_id] = {}
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add(types.KeyboardButton("📱 Отправить номер", request_contact=True))
+    bot.send_message(chat_id, "Отправьте номер телефона:", reply_markup=kb)
 
+@bot.message_handler(content_types=["contact"])
+def phone(message):
+    chat_id = message.chat.id
+    user_states[chat_id]["phone"] = message.contact.phone_number
+    bot.send_message(chat_id, "Введите ФИО:", reply_markup=types.ReplyKeyboardRemove())
 
-# ================= PHONE =================
-@dp.message(GameForm.phone, F.contact)
-async def get_phone(message: Message, state: FSMContext):
-    await state.update_data(phone=message.contact.phone_number)
-    await message.answer("Введите ФИО:", reply_markup=ReplyKeyboardRemove())
-    await state.set_state(GameForm.name)
-# ========================================
+@bot.message_handler(func=lambda m: m.chat.id in user_states and "name" not in user_states[m.chat.id])
+def name(message):
+    chat_id = message.chat.id
+    user_states[chat_id]["name"] = message.text
+    bot.send_message(chat_id, f"Трек №1 группы «{CURRENT_ARTIST}»:")
 
+@bot.message_handler(func=lambda m: m.chat.id in user_states and "track1" not in user_states[m.chat.id])
+def track1(message):
+    user_states[message.chat.id]["track1"] = message.text
+    bot.send_message(message.chat.id, "Трек №2:")
 
-# ================= NAME =================
-@dp.message(GameForm.name)
-async def get_name(message: Message, state: FSMContext):
-    await state.update_data(name=message.text)
-    await message.answer(f"Трек №1 группы «{current_artist}»")
-    await state.set_state(GameForm.track1)
-# ========================================
+@bot.message_handler(func=lambda m: m.chat.id in user_states and "track2" not in user_states[m.chat.id])
+def track2(message):
+    user_states[message.chat.id]["track2"] = message.text
+    bot.send_message(message.chat.id, "Трек №3:")
 
+@bot.message_handler(func=lambda m: m.chat.id in user_states and "track3" not in user_states[m.chat.id])
+def track3(message):
+    chat_id = message.chat.id
+    user_states[chat_id]["track3"] = message.text
 
-# ================= TRACKS =================
-@dp.message(GameForm.track1)
-async def track1(message: Message, state: FSMContext):
-    await state.update_data(track1=message.text)
-    await message.answer("Трек №2")
-    await state.set_state(GameForm.track2)
+    row = [
+        user_states[chat_id]["name"],
+        user_states[chat_id]["phone"],
+        user_states[chat_id]["track1"],
+        user_states[chat_id]["track2"],
+        user_states[chat_id]["track3"],
+    ]
 
+    with buffer_lock:
+        result_buffer.append(row)
 
-@dp.message(GameForm.track2)
-async def track2(message: Message, state: FSMContext):
-    await state.update_data(track2=message.text)
-    await message.answer("Трек №3")
-    await state.set_state(GameForm.track3)
+    bot.send_message(chat_id, "✅ Спасибо за участие!\nСледите за результатами в канале Радио МИР|Эфир 🎉")
+    del user_states[chat_id]
 
-
-@dp.message(GameForm.track3)
-async def track3(message: Message, state: FSMContext):
-    data = await state.get_data()
-
-    save_result([
-        data["name"],
-        data["phone"],
-        data["track1"],
-        data["track2"],
-        message.text
-    ])
-
-    played_users.add(message.from_user.id)
-
-    await message.answer(
-        "Спасибо за участие! 🎸\n"
-        "Следите за результатами в телеграм-канале Радио МИР|Эфир!"
-    )
-    await state.clear()
-# ========================================
-
-
-# ================= ADMIN =================
-@dp.message(Command("new"))
-async def new_artist(message: Message):
-    if message.from_user.id not in ADMIN_IDS:
+# ========= ADMIN =========
+@bot.message_handler(commands=["results"])
+def results(message):
+    if str(message.chat.id) != ADMIN_CHAT_ID:
         return
-    global current_artist
-    current_artist = message.text.replace("/new", "").strip()
-    await message.answer(f"Новый исполнитель: {current_artist}")
+    push_buffer()
+    content = github_read(CSV_FILE)
+    tmp = "/tmp/results.csv"
+    open(tmp, "w", encoding="utf-8").write(content)
+    with open(tmp, "rb") as f:
+        bot.send_document(message.chat.id, f)
 
-
-@dp.message(Command("results"))
-async def results(message: Message):
-    if message.from_user.id not in ADMIN_IDS:
+@bot.message_handler(commands=["reset"])
+def reset(message):
+    if str(message.chat.id) != ADMIN_CHAT_ID:
         return
-    await message.answer_document(InputFile(CSV_FILE))
+    header = "ФИО|Телефон|Трек1|Трек2|Трек3"
+    github_write(CSV_FILE, header + "\n", "Reset game")
+    bot.send_message(message.chat.id, "🔄 Игра сброшена")
 
+# ========= BUFFER =========
+def push_buffer():
+    with buffer_lock:
+        if not result_buffer:
+            return
+        header = "ФИО|Телефон|Трек1|Трек2|Трек3"
+        for r in result_buffer:
+            github_append(CSV_FILE, "|".join(r), header)
+        result_buffer.clear()
 
-@dp.message(Command("reset"))
-async def reset(message: Message):
-    if message.from_user.id not in ADMIN_IDS:
-        return
+def auto_flush():
+    while True:
+        time.sleep(120)
+        push_buffer()
 
-    global played_users
-    for user_id in played_users:
-        try:
-            await bot.send_message(
-                user_id,
-                "Новая игра «Алиса по пятницам» 🎶\nЖмите /start!"
-            )
-        except:
-            pass
+threading.Thread(target=auto_flush, daemon=True).start()
 
-    played_users = set()
+# ========= WEBHOOK =========
+@app.route(f"/webhook/{TOKEN}", methods=["POST"])
+def webhook():
+    update = telebot.types.Update.de_json(request.get_data().decode("utf-8"))
+    bot.process_new_updates([update])
+    return "ok"
 
-    with open(CSV_FILE, "w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f, delimiter="|")
-        writer.writerow(["ФИО", "Телефон", "Трек 1", "Трек 2", "Трек 3"])
+@app.route("/")
+def index():
+    return "Alice Friday Bot running"
 
-    git_commit_and_push()
-    await message.answer("Игра сброшена 🔥")
-# ========================================
-
-
-# ================= RUN =================
-async def main():
-    setup_git()
-    init_csv()
-    await dp.start_polling(bot)
-
-
+# ========= RUN =========
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
-# ========================================
+    bot.remove_webhook()
+    time.sleep(1)
+    bot.set_webhook(url=f"https://YOUR-RENDER-URL.onrender.com/webhook/{TOKEN}")
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 10000)))
