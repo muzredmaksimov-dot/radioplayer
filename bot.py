@@ -101,7 +101,7 @@ def start_game(c):
     except:
         pass
     # Проверка подписки
-    channel = "@RadioMIR_Efir"
+    channel = "@test111"
     try:
         status = bot.get_chat_member(channel, chat_id).status
         if status not in ["member", "administrator", "creator"]:
