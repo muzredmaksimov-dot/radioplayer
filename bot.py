@@ -116,7 +116,7 @@ def start_game(c):
         member_status = bot.get_chat_member(CHANNEL_ID, chat_id).status
         if member_status not in ["member", "administrator", "creator"]:
             kb = types.InlineKeyboardMarkup()
-            kb.add(types.InlineKeyboardButton("Подписаться на канал", url="https://t.me/test111"))
+            kb.add(types.InlineKeyboardButton("Подписаться на канал TEST111", url="https://t.me/testposring"))
             send_message(chat_id,
                          "Для участия подпишитесь на канал «test111»",
                          reply_markup=kb)
