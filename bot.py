@@ -9,11 +9,10 @@ import base64
 import threading
 
 # === НАСТРОЙКИ ===
-TOKEN = os.environ.get("BOT_TOKEN")       # токен бота в Render ENV
-ADMIN_CHAT_ID = os.environ.get("ADMIN_CHAT_ID")  # id админа
+TOKEN = os.environ.get("BOT_TOKEN")  # токен бота в Render ENV
+ADMIN_CHAT_ID = os.environ.get("ADMIN_CHAT_ID")  # id админа в ENV
 CSV_FILE = "backup_results.csv"
-SUBSCRIBERS_FILE = "subscribers.txt"
-GITHUB_REPO = "muzredmaksimov-dot/radioplayer_results"
+GITHUB_REPO = "muzredmaksimov-dot/radioplayer"
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 
 bot = telebot.TeleBot(TOKEN)
@@ -81,6 +80,16 @@ def github_append_line(repo, path, token, line, header_if_missing=None):
         new_text = existing + line + "\n"
     return github_write_file(repo, path, token, new_text, f"Update {path}")
 
+# === CSV CHECK ===
+def ensure_csv():
+    """Создаем CSV с заголовками, если его нет"""
+    if not os.path.exists(CSV_FILE):
+        headers = ["ФИО", "номер телефона", "трек1", "трек2", "трек3"]
+        with open(CSV_FILE, "w", encoding="utf-8", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(headers)
+        github_write_file(GITHUB_REPO, CSV_FILE, GITHUB_TOKEN, ",".join(headers) + "\n", "Создание нового CSV")
+
 # === СТАРТ ===
 @bot.message_handler(commands=["start"])
 def start(message):
@@ -93,7 +102,6 @@ def start(message):
                  "Нажмите кнопку ниже, чтобы начать.",
                  reply_markup=kb)
 
-# === ЗАПУСК ИГРЫ ===
 @bot.callback_query_handler(func=lambda c: c.data == "start_game")
 def start_game(c):
     chat_id = c.message.chat.id
@@ -102,26 +110,30 @@ def start_game(c):
     except:
         pass
 
-    # Проверка подписки на тестовый канал
-    channel = "@test111"
+    # Проверка подписки по ID канала
+    CHANNEL_ID = -1002905716039  # test111
     try:
-        member = bot.get_chat_member(channel, chat_id)
-        if member.status not in ["member", "administrator", "creator"]:
+        member_status = bot.get_chat_member(CHANNEL_ID, chat_id).status
+        if member_status not in ["member", "administrator", "creator"]:
             kb = types.InlineKeyboardMarkup()
-            kb.add(types.InlineKeyboardButton("Подписаться на канал", url=f"https://t.me/{channel[1:]}"))
+            kb.add(types.InlineKeyboardButton("Подписаться на канал", url="https://t.me/test111"))
             send_message(chat_id,
                          "Для участия подпишитесь на канал «test111»",
                          reply_markup=kb)
             return
     except Exception as e:
-        print(f"⚠️ Не удалось проверить подписку пользователя {chat_id}: {e}")
-        send_message(chat_id, "⚠️ Не удалось проверить подписку, но игра продолжается (тестовый режим)")
+        print("Ошибка проверки подписки:", e)
+        kb = types.InlineKeyboardMarkup()
+        kb.add(types.InlineKeyboardButton("Подписаться на канал", url="https://t.me/test111"))
+        send_message(chat_id,
+                     "Для участия подпишитесь на канал «test111»",
+                     reply_markup=kb)
+        return
 
     # Начало игры: запрос телефона
     msg = send_message(chat_id, "Оставьте свой номер телефона:")
     user_states[chat_id] = {"step": "phone", "data": {}}
 
-# === ОБРАБОТКА ВВОДА ===
 @bot.message_handler(func=lambda m: True)
 def handle_input(message):
     chat_id = message.chat.id
@@ -150,6 +162,7 @@ def handle_input(message):
         send_message(chat_id, "Введите третий трек:")
     elif step == "track3":
         state["data"]["track3"] = text
+        ensure_csv()
         line = f"{state['data']['fio']}|{state['data']['phone']}|{state['data']['track1']}|{state['data']['track2']}|{state['data']['track3']}"
         github_append_line(GITHUB_REPO, CSV_FILE, GITHUB_TOKEN, line, header_if_missing="ФИО|номер телефона|трек1|трек2|трек3")
         send_message(chat_id, "Спасибо за участие! Следите за результатами в @test111")
