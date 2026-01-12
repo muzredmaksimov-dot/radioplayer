@@ -3,49 +3,57 @@ import csv
 import subprocess
 from datetime import datetime
 
-from aiogram import Bot, Dispatcher, executor, types
-from aiogram.contrib.fsm_storage.memory import MemoryStorage
-from aiogram.dispatcher import FSMContext
-from aiogram.dispatcher.filters.state import State, StatesGroup
+from aiogram import Bot, Dispatcher, F
+from aiogram.types import (
+    Message,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
+    InputFile
+)
+from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.storage.memory import MemoryStorage
 
 
-# ================== НАСТРОЙКИ ==================
+# ================= НАСТРОЙКИ =================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME")  # @radiomir_efir
+CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME")   # @radiomir_efir
 ADMIN_IDS = {int(x) for x in os.getenv("ADMIN_IDS").split(",")}
 
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
-GITHUB_REPO = os.getenv("GITHUB_REPO")            # andrei/alice-fridays-bot
+GITHUB_REPO = os.getenv("GITHUB_REPO")             # user/repo
 GITHUB_BRANCH = os.getenv("GITHUB_BRANCH", "main")
 
 CSV_FILE = "results.csv"
 current_artist = "Алиса"
 played_users = set()
-# ===============================================
+# =============================================
 
 
-bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher(bot, storage=MemoryStorage())
+bot = Bot(BOT_TOKEN)
+dp = Dispatcher(storage=MemoryStorage())
 
 
-# ================== GIT ==================
+# ================= GIT =================
 def setup_git():
     repo_url = f"https://{GITHUB_TOKEN}@github.com/{GITHUB_REPO}.git"
-    subprocess.run(["git", "remote", "set-url", "origin", repo_url])
-    subprocess.run(["git", "checkout", GITHUB_BRANCH])
+    subprocess.run(["git", "remote", "set-url", "origin", repo_url], check=False)
+    subprocess.run(["git", "checkout", GITHUB_BRANCH], check=False)
 
 
 def git_commit_and_push():
-    subprocess.run(["git", "add", CSV_FILE])
-    subprocess.run([
-        "git", "commit",
-        "-m", f"Game entry {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-    ])
-    subprocess.run(["git", "push"])
-# =========================================
+    subprocess.run(["git", "add", CSV_FILE], check=False)
+    subprocess.run(
+        ["git", "commit", "-m", f"Game entry {datetime.now()}"],
+        check=False
+    )
+    subprocess.run(["git", "push"], check=False)
+# =======================================
 
 
-# ================== CSV ==================
+# ================= CSV =================
 def init_csv():
     if not os.path.exists(CSV_FILE):
         with open(CSV_FILE, "w", newline="", encoding="utf-8") as f:
@@ -59,32 +67,32 @@ def save_result(row):
         writer = csv.writer(f, delimiter="|")
         writer.writerow(row)
     git_commit_and_push()
-# =========================================
+# =======================================
 
 
-# ================== FSM ==================
+# ================= FSM =================
 class GameForm(StatesGroup):
     phone = State()
     name = State()
     track1 = State()
     track2 = State()
     track3 = State()
-# =========================================
+# =======================================
 
 
-# ================== UTILS ==================
-async def is_subscribed(user_id):
+# ================= UTILS =================
+async def is_subscribed(user_id: int) -> bool:
     try:
         member = await bot.get_chat_member(CHANNEL_USERNAME, user_id)
         return member.status in ("member", "administrator", "creator")
     except:
         return False
-# ==========================================
+# ========================================
 
 
-# ================== START ==================
-@dp.message_handler(commands=["start"])
-async def start_game(message: types.Message):
+# ================= START =================
+@dp.message(Command("start"))
+async def start_game(message: Message, state: FSMContext):
     if not await is_subscribed(message.from_user.id):
         await message.answer(
             "Для участия подпишитесь на канал «Радио МИР|Эфир» 👇\n"
@@ -92,52 +100,54 @@ async def start_game(message: types.Message):
         )
         return
 
-    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add(types.KeyboardButton("Отправить номер телефона", request_contact=True))
+    kb = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="Отправить номер", request_contact=True)]],
+        resize_keyboard=True
+    )
 
     await message.answer(
-        "Оставьте свой номер телефона — он понадобится, если вы победите 📞",
+        "Оставьте номер телефона — он понадобится, если вы победите 📞",
         reply_markup=kb
     )
-    await GameForm.phone.set()
-# ==========================================
+    await state.set_state(GameForm.phone)
+# ========================================
 
 
-# ================== PHONE ==================
-@dp.message_handler(content_types=types.ContentType.CONTACT, state=GameForm.phone)
-async def get_phone(message: types.Message, state: FSMContext):
+# ================= PHONE =================
+@dp.message(GameForm.phone, F.contact)
+async def get_phone(message: Message, state: FSMContext):
     await state.update_data(phone=message.contact.phone_number)
-    await message.answer("Введите ФИО:", reply_markup=types.ReplyKeyboardRemove())
-    await GameForm.name.set()
-# ==========================================
+    await message.answer("Введите ФИО:", reply_markup=ReplyKeyboardRemove())
+    await state.set_state(GameForm.name)
+# ========================================
 
 
-# ================== NAME ==================
-@dp.message_handler(state=GameForm.name)
-async def get_name(message: types.Message, state: FSMContext):
+# ================= NAME =================
+@dp.message(GameForm.name)
+async def get_name(message: Message, state: FSMContext):
     await state.update_data(name=message.text)
     await message.answer(f"Трек №1 группы «{current_artist}»")
-    await GameForm.track1.set()
-# ==========================================
+    await state.set_state(GameForm.track1)
+# ========================================
 
 
-# ================== TRACKS ==================
-@dp.message_handler(state=GameForm.track1)
-async def get_track1(message: types.Message, state: FSMContext):
+# ================= TRACKS =================
+@dp.message(GameForm.track1)
+async def track1(message: Message, state: FSMContext):
     await state.update_data(track1=message.text)
     await message.answer("Трек №2")
-    await GameForm.track2.set()
+    await state.set_state(GameForm.track2)
 
 
-@dp.message_handler(state=GameForm.track2)
-async def get_track2(message: types.Message, state: FSMContext):
+@dp.message(GameForm.track2)
+async def track2(message: Message, state: FSMContext):
     await state.update_data(track2=message.text)
     await message.answer("Трек №3")
-    await GameForm.track3.set()
+    await state.set_state(GameForm.track3)
 
 
-@dp.message_handler(state=GameForm.track3)
-async def get_track3(message: types.Message, state: FSMContext):
+@dp.message(GameForm.track3)
+async def track3(message: Message, state: FSMContext):
     data = await state.get_data()
 
     save_result([
@@ -152,31 +162,31 @@ async def get_track3(message: types.Message, state: FSMContext):
 
     await message.answer(
         "Спасибо за участие! 🎸\n"
-        "За результатами следите в телеграм-канале Радио МИР|Эфир!"
+        "Следите за результатами в телеграм-канале Радио МИР|Эфир!"
     )
-    await state.finish()
-# ==========================================
+    await state.clear()
+# ========================================
 
 
-# ================== ADMIN ==================
-@dp.message_handler(commands=["new"])
-async def new_artist(message: types.Message):
+# ================= ADMIN =================
+@dp.message(Command("new"))
+async def new_artist(message: Message):
     if message.from_user.id not in ADMIN_IDS:
         return
     global current_artist
-    current_artist = message.get_args()
+    current_artist = message.text.replace("/new", "").strip()
     await message.answer(f"Новый исполнитель: {current_artist}")
 
 
-@dp.message_handler(commands=["results"])
-async def send_results(message: types.Message):
+@dp.message(Command("results"))
+async def results(message: Message):
     if message.from_user.id not in ADMIN_IDS:
         return
-    await message.answer_document(types.InputFile(CSV_FILE))
+    await message.answer_document(InputFile(CSV_FILE))
 
 
-@dp.message_handler(commands=["reset"])
-async def reset_game(message: types.Message):
+@dp.message(Command("reset"))
+async def reset(message: Message):
     if message.from_user.id not in ADMIN_IDS:
         return
 
@@ -185,7 +195,7 @@ async def reset_game(message: types.Message):
         try:
             await bot.send_message(
                 user_id,
-                "Стартует новая игра «Алиса по пятницам» 🎶\nЖмите /start и участвуйте!"
+                "Новая игра «Алиса по пятницам» 🎶\nЖмите /start!"
             )
         except:
             pass
@@ -197,13 +207,18 @@ async def reset_game(message: types.Message):
         writer.writerow(["ФИО", "Телефон", "Трек 1", "Трек 2", "Трек 3"])
 
     git_commit_and_push()
-    await message.answer("Игра сброшена, новая пятница запущена 🔥")
-# ==========================================
+    await message.answer("Игра сброшена 🔥")
+# ========================================
 
 
-# ================== RUN ==================
-if __name__ == "__main__":
+# ================= RUN =================
+async def main():
     setup_git()
     init_csv()
-    executor.start_polling(dp, skip_updates=True)
-# ==========================================
+    await dp.start_polling(bot)
+
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())
+# ========================================
