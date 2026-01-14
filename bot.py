@@ -17,6 +17,8 @@ SUBSCRIBERS_FILE = "subscribers.txt"
 ARTIST_FILE = "current_artist.txt"
 GITHUB_REPO = "muzredmaksimov-dot/radioplayer"
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
+CHANNEL_ID = -1002905716039        # test111
+CHANNEL_URL = "https://t.me/testposring"
 
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
