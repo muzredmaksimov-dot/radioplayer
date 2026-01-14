@@ -2,249 +2,245 @@ import os
 import telebot
 import time
 import csv
-from telebot import types
-from flask import Flask, request
+import datetime
+import threading
 import requests
 import base64
-import threading
-from datetime import datetime
+from telebot import types
+from flask import Flask, request
 
 # === НАСТРОЙКИ ===
-TOKEN = os.environ.get("BOT_TOKEN")  # токен бота
-ADMIN_CHAT_ID = os.environ.get("ADMIN_CHAT_ID")  # id админа
-CSV_FILE = "backup_results.csv"
-SUBSCRIBERS_FILE = "subscribers.txt"
-ARTIST_FILE = "current_artist.txt"
+TOKEN = os.environ.get("BOT_TOKEN")
+ADMIN_CHAT_ID = str(os.environ.get("ADMIN_CHAT_ID"))
+CSV_FILE = "results.csv"
+
 GITHUB_REPO = "muzredmaksimov-dot/radioplayer"
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
-CHANNEL_ID = -1002905716039        # test111
-CHANNEL_URL = "https://t.me/testposring"
+
+CHANNEL_ID = -1002905716039
+CHANNEL_URL = "https://t.me/test111"
 
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-# === ХРАНИЛИЩЕ ===
-user_last_message = {}
+# === ХРАНИЛИЩА ===
 user_states = {}
-buffer_lock = threading.Lock()
-result_buffer = []
+user_main_message = {}
+user_finished = set()
+friday_reminders = set()
 current_artist = "АРТИСТ"
 
-# === ЗАГРУЗКА текущего артиста с GitHub ===
-artist_text = ""
-try:
-    artist_text = github_read_file(GITHUB_REPO, ARTIST_FILE, GITHUB_TOKEN)
-except:
-    pass
-if artist_text:
-    current_artist = artist_text.strip()
+lock = threading.Lock()
 
-# === УТИЛИТЫ GITHUB ===
-def github_read_file(repo, path, token):
-    try:
-        url = f"https://api.github.com/repos/{repo}/contents/{path}"
-        headers = {"Authorization": f"token {token}"} if token else {}
-        r = requests.get(url, headers=headers)
-        if r.status_code == 200:
-            content_b64 = r.json().get("content", "")
-            return base64.b64decode(content_b64).decode("utf-8")
-        return ""
-    except Exception as e:
-        print("GitHub read error:", e)
-        return ""
+# === GITHUB ===
+def github_read(path):
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{path}"
+    headers = {"Authorization": f"token {GITHUB_TOKEN}"} if GITHUB_TOKEN else {}
+    r = requests.get(url, headers=headers)
+    if r.status_code == 200:
+        return base64.b64decode(r.json()["content"]).decode("utf-8")
+    return ""
 
-def github_write_file(repo, path, token, content, commit_msg):
-    try:
-        url = f"https://api.github.com/repos/{repo}/contents/{path}"
-        headers = {"Authorization": f"token {token}"} if token else {}
-        r_get = requests.get(url, headers=headers)
-        b64 = base64.b64encode(content.encode("utf-8")).decode("utf-8")
-        payload = {"message": commit_msg, "content": b64}
-        if r_get.status_code == 200:
-            payload["sha"] = r_get.json().get("sha")
-        r_put = requests.put(url, headers=headers, json=payload)
-        return r_put.status_code in (200, 201)
-    except Exception as e:
-        print("GitHub write error:", e)
-        return False
+def github_write(path, content, msg):
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{path}"
+    headers = {"Authorization": f"token {GITHUB_TOKEN}"} if GITHUB_TOKEN else {}
+    sha = None
+    r = requests.get(url, headers=headers)
+    if r.status_code == 200:
+        sha = r.json()["sha"]
 
-def github_append_line(repo, path, token, line, header_if_missing=None):
-    existing = github_read_file(repo, path, token)
-    if not existing:
-        new_text = (header_if_missing + "\n" if header_if_missing else "") + line + "\n"
-    else:
-        if not existing.endswith("\n"):
-            existing += "\n"
-        new_text = existing + line + "\n"
-    return github_write_file(repo, path, token, new_text, f"Update {path}")
+    payload = {
+        "message": msg,
+        "content": base64.b64encode(content.encode()).decode()
+    }
+    if sha:
+        payload["sha"] = sha
 
-# === CSV CHECK ===
+    requests.put(url, headers=headers, json=payload)
+
+# === CSV ===
 def ensure_csv():
-    if not os.path.exists(CSV_FILE):
-        headers = ["ФИО", "номер телефона", "трек1", "трек2", "трек3"]
-        with open(CSV_FILE, "w", encoding="utf-8", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(headers)
-        github_write_file(GITHUB_REPO, CSV_FILE, GITHUB_TOKEN, ",".join(headers) + "\n", "Создание нового CSV")
+    if not github_read(CSV_FILE):
+        header = "ФИО;Телефон;Трек1;Трек2;Трек3\n"
+        github_write(CSV_FILE, header, "Init CSV")
 
-# === СООБЩЕНИЯ ===
-def send_message(chat_id, text, reply_markup=None, parse_mode=None):
-    try:
-        msg = bot.send_message(chat_id, text, reply_markup=reply_markup, parse_mode=parse_mode)
-        user_last_message.setdefault(chat_id, []).append(msg.message_id)
-        return msg
-    except Exception as e:
-        print("Ошибка отправки:", e)
+def append_csv(row):
+    data = github_read(CSV_FILE)
+    github_write(CSV_FILE, data + row + "\n", "Add result")
 
-def cleanup_chat(chat_id, keep_first_rule=False):
-    msgs = user_last_message.get(chat_id, [])
-    keep = msgs[0:1] if keep_first_rule and msgs else []
-    for msg_id in msgs:
-        if msg_id not in keep:
-            try:
-                bot.delete_message(chat_id, msg_id)
-            except: 
-                pass
-    user_last_message[chat_id] = keep
+# === ВСПОМОГАТЕЛЬНОЕ ===
+def is_friday():
+    return datetime.datetime.now().weekday() == 4
 
-# === КОМАНДА /new ===
-@bot.message_handler(commands=["new"])
-def set_new_artist(message):
-    global current_artist
-    if str(message.chat.id) != ADMIN_CHAT_ID:
-        send_message(message.chat.id, "⛔ Нет доступа")
-        return
-    args = message.text.split(maxsplit=1)
-    if len(args) < 2 or not args[1].strip():
-        send_message(message.chat.id, "❌ Использование: /new <имя артиста>")
-        return
-    current_artist = args[1].strip()
-    github_write_file(GITHUB_REPO, ARTIST_FILE, GITHUB_TOKEN, current_artist, f"Update current artist: {current_artist}")
-    send_message(message.chat.id, f"✅ Текущий артист для пятницы обновлен: «{current_artist}»")
-
-# === КОМАНДА /reset ===
-@bot.message_handler(commands=["reset"])
-def reset_game(message):
-    if str(message.chat.id) != ADMIN_CHAT_ID:
-        send_message(message.chat.id, "⛔ Нет доступа")
-        return
-    # Сброс CSV
-    headers = ["ФИО", "номер телефона", "трек1", "трек2", "трек3"]
-    open(CSV_FILE, "w", encoding="utf-8", newline="").write(",".join(headers) + "\n")
-    github_write_file(GITHUB_REPO, CSV_FILE, GITHUB_TOKEN, ",".join(headers) + "\n", "Reset game")
-    # Рассылка
-    subscribers_text = github_read_file(GITHUB_REPO, SUBSCRIBERS_FILE, GITHUB_TOKEN)
-    subscribers = [s.strip() for s in subscribers_text.split("\n") if s.strip()]
-    sent = 0
-    for s in subscribers:
+def set_screen(chat_id, text, kb=None):
+    if chat_id in user_main_message:
         try:
-            kb = types.InlineKeyboardMarkup()
-            kb.add(types.InlineKeyboardButton("🚀 Играть", callback_data="start_game"))
-            bot.send_message(int(s), f"🎵 В эту пятницу собираем треклист «{current_artist}»!\n\nЛови песни с 7 до 20 и присылай их в правильном порядке.", reply_markup=kb)
-            sent += 1
-            time.sleep(0.05)
+            bot.edit_message_text(text, chat_id, user_main_message[chat_id], reply_markup=kb)
+            return
         except:
             pass
-    bot.send_message(ADMIN_CHAT_ID, f"✅ Рассылка выполнена ({sent} пользователей).")
+    msg = bot.send_message(chat_id, text, reply_markup=kb)
+    user_main_message[chat_id] = msg.message_id
 
-# === СТАРТ ===
+# === START ===
 @bot.message_handler(commands=["start"])
 def start(message):
     chat_id = message.chat.id
-    cleanup_chat(chat_id)
-    today = datetime.today().weekday()  # 0 = Пн ... 4 = Пт
+
+    if not is_friday():
+        kb = types.InlineKeyboardMarkup()
+        kb.add(types.InlineKeyboardButton("🔔 Напомнить в пятницу", callback_data="remind"))
+        set_screen(
+            chat_id,
+            "🎵 *Алиса по пятницам*\n\n"
+            "Каждую пятницу с 7:00 до 20:00 в эфире звучат песни одного артиста.\n"
+            "Твоя задача — прислать 3 трека в правильном порядке.\n\n"
+            "🎁 В понедельник подведём итоги и разыграем умную колонку!",
+            kb
+        )
+        return
+
     kb = types.InlineKeyboardMarkup()
-    if today != 4:  # не пятница
-        kb.add(types.InlineKeyboardButton("Напомнить в пятницу", callback_data="remind_friday"))
-        send_message(chat_id,
-                     "Это игра «АЛИСА ПО пятницам».\nКаждую пятницу лови в эфире песни одного исполнителя с 7 до 20 и присылай их в правильном порядке.\nВ понедельник подведем итоги, среди всех кто ответил правильно случайным образом разыграем умную колонку.",
-                     reply_markup=kb)
-    else:
-        kb.add(types.InlineKeyboardButton("🚀 Играть", callback_data="start_game"))
-        send_message(chat_id,
-                     f"Привет! 🎵 Сегодня пятница! Играем треклист «{current_artist}».",
-                     reply_markup=kb)
+    kb.add(types.InlineKeyboardButton("🚀 Играть", callback_data="play"))
+    set_screen(chat_id, f"🎵 Сегодня собираем треклист *{current_artist}*", kb)
 
-# === CALLBACKS ===
-@bot.callback_query_handler(func=lambda c: c.data == "remind_friday")
-def remind_friday(c):
-    send_message(c.message.chat.id, "✅ Напоминание установлено! В пятницу получите сообщение о начале игры.")
+# === НАПОМИНАНИЕ ===
+@bot.callback_query_handler(func=lambda c: c.data == "remind")
+def remind(c):
+    friday_reminders.add(c.message.chat.id)
+    bot.answer_callback_query(c.id, "🔔 Напомним в пятницу в 9:00")
 
-# === ПРОВЕРКА ПОДПИСКИ И ИГРА ===
-@bot.callback_query_handler(func=lambda c: c.data == "start_game")
-def start_game(c):
+# === ИГРА ===
+@bot.callback_query_handler(func=lambda c: c.data == "play")
+def play(c):
     chat_id = c.message.chat.id
+
     try:
-        bot.delete_message(chat_id, c.message.message_id)
-    except: pass
-    # Проверка подписки
-    CHANNEL_ID = -1002905716039  # test111
-    try:
-        member_status = bot.get_chat_member(CHANNEL_ID, chat_id).status
-        if member_status not in ["member", "administrator", "creator"]:
+        status = bot.get_chat_member(CHANNEL_ID, chat_id).status
+        if status not in ("member", "administrator", "creator"):
             kb = types.InlineKeyboardMarkup()
-            kb.add(types.InlineKeyboardButton("Подписаться на канал TEST111", url="https://t.me/test111"))
-            send_message(chat_id, "Для участия подпишитесь на канал «test111»", reply_markup=kb)
+            kb.add(types.InlineKeyboardButton("Подписаться", url=CHANNEL_URL))
+            kb.add(types.InlineKeyboardButton("Проверить подписку", callback_data="play"))
+            set_screen(chat_id, "Подпишитесь на канал, чтобы играть 👇", kb)
             return
     except:
-        send_message(chat_id, "Для участия подпишитесь на канал «test111»")
         return
-    # Начало игры
-    msg = send_message(chat_id, "Оставьте свой номер телефона:")
-    user_states[chat_id] = {"step": "phone", "data": {}}
 
-# === ОБРАБОТКА ВВОДА ===
-@bot.message_handler(func=lambda m: True)
-def handle_input(message):
-    chat_id = message.chat.id
-    state = user_states.get(chat_id)
-    if not state: return
-    step = state.get("step")
-    text = message.text.strip()
+    user_states[chat_id] = {"step": "phone", "data": {}}
+    set_screen(chat_id, "Введите номер телефона:")
+
+@bot.message_handler(func=lambda m: m.chat.id in user_states)
+def game_flow(m):
+    chat_id = m.chat.id
+    state = user_states[chat_id]
+    step = state["step"]
+    text = m.text.strip()
+
     if step == "phone":
         state["data"]["phone"] = text
         state["step"] = "fio"
-        send_message(chat_id, "Укажите ФИО:")
+        set_screen(chat_id, "Введите ФИО:")
     elif step == "fio":
         state["data"]["fio"] = text
-        state["step"] = "track1"
-        send_message(chat_id, "Введите первый трек:")
-    elif step == "track1":
-        state["data"]["track1"] = text
-        state["step"] = "track2"
-        send_message(chat_id, "Введите второй трек:")
-    elif step == "track2":
-        state["data"]["track2"] = text
-        state["step"] = "track3"
-        send_message(chat_id, "Введите третий трек:")
-    elif step == "track3":
-        state["data"]["track3"] = text
+        state["step"] = "t1"
+        set_screen(chat_id, "Введите первый трек:")
+    elif step == "t1":
+        state["data"]["t1"] = text
+        state["step"] = "t2"
+        set_screen(chat_id, "Введите второй трек:")
+    elif step == "t2":
+        state["data"]["t2"] = text
+        state["step"] = "t3"
+        set_screen(chat_id, "Введите третий трек:")
+    elif step == "t3":
+        state["data"]["t3"] = text
         ensure_csv()
-        line = f"{state['data']['fio']}|{state['data']['phone']}|{state['data']['track1']}|{state['data']['track2']}|{state['data']['track3']}"
-        github_append_line(GITHUB_REPO, CSV_FILE, GITHUB_TOKEN, line, header_if_missing="ФИО|номер телефона|трек1|трек2|трек3")
-        send_message(chat_id, f"Спасибо за участие! Следите за результатами в @test111")
-        user_states.pop(chat_id, None)
-        cleanup_chat(chat_id, keep_first_rule=True)
+        row = f"{state['data']['fio']};{state['data']['phone']};{state['data']['t1']};{state['data']['t2']};{state['data']['t3']}"
+        append_csv(row)
+        user_states.pop(chat_id)
+        user_finished.add(chat_id)
+        set_screen(chat_id, "✅ Спасибо за участие!\n\nСледите за эфиром 💙")
 
-# === FLASK WEBHOOK ===
-@app.route(f'/webhook/{TOKEN}', methods=['POST'])
+# === АДМИН ===
+@bot.message_handler(commands=["new"])
+def new_artist(m):
+    global current_artist
+    if str(m.chat.id) != ADMIN_CHAT_ID:
+        return
+    current_artist = m.text.replace("/new", "").strip()
+    bot.send_message(m.chat.id, f"🎤 Артист установлен: {current_artist}")
+
+@bot.message_handler(commands=["reset"])
+def reset(m):
+    if str(m.chat.id) != ADMIN_CHAT_ID:
+        return
+
+    ensure_csv()
+    github_write(CSV_FILE, "ФИО;Телефон;Трек1;Трек2;Трек3\n", "Reset CSV")
+
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("🚀 Играть", callback_data="play"))
+
+    for chat_id in list(user_finished):
+        try:
+            bot.delete_message(chat_id, user_main_message.get(chat_id))
+        except:
+            pass
+        msg = bot.send_message(chat_id, f"🎵 В эту пятницу собираем треклист *{current_artist}*", reply_markup=kb, parse_mode="Markdown")
+        user_main_message[chat_id] = msg.message_id
+
+    user_finished.clear()
+    bot.send_message(m.chat.id, "✅ Игра перезапущена и рассылка отправлена")
+
+@bot.message_handler(commands=["results"])
+def results(m):
+    if str(m.chat.id) != ADMIN_CHAT_ID:
+        return
+
+    content = github_read(CSV_FILE)
+    if not content:
+        bot.send_message(m.chat.id, "❌ Файл пуст")
+        return
+
+    path = "/tmp/results.csv"
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(content)
+
+    with open(path, "rb") as f:
+        bot.send_document(m.chat.id, f)
+
+# === НАПОМИНАНИЕ В 9:00 ===
+def friday_notifier():
+    while True:
+        now = datetime.datetime.now()
+        if now.weekday() == 4 and now.hour == 9 and now.minute == 0:
+            kb = types.InlineKeyboardMarkup()
+            kb.add(types.InlineKeyboardButton("🚀 Играть", callback_data="play"))
+            for chat_id in friday_reminders:
+                try:
+                    msg = bot.send_message(chat_id, "🎵 Игра началась!", reply_markup=kb)
+                    user_main_message[chat_id] = msg.message_id
+                except:
+                    pass
+            friday_reminders.clear()
+            time.sleep(60)
+        time.sleep(10)
+
+threading.Thread(target=friday_notifier, daemon=True).start()
+
+# === WEBHOOK ===
+@app.route(f"/webhook/{TOKEN}", methods=["POST"])
 def webhook():
-    if request.headers.get("content-type") == "application/json":
-        update = telebot.types.Update.de_json(request.get_data().decode("utf-8"))
-        bot.process_new_updates([update])
-        return ""
-    return "Bad Request", 400
+    update = telebot.types.Update.de_json(request.data.decode())
+    bot.process_new_updates([update])
+    return ""
 
-@app.route('/')
-def index(): return "Алиса по пятницам бот работает!"
-@app.route('/health')
-def health(): return "OK"
+@app.route("/")
+def index():
+    return "Bot OK"
 
-# === ЗАПУСК ===
 if __name__ == "__main__":
-    print("🚀 Бот запущен")
     bot.remove_webhook()
     time.sleep(1)
-    RENDER_URL = os.environ.get("RENDER_EXTERNAL_URL")
-    bot.set_webhook(url=f"{RENDER_URL}/webhook/{TOKEN}")
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    bot.set_webhook(url=f"{os.environ.get('RENDER_EXTERNAL_URL')}/webhook/{TOKEN}")
+    app.run(host="0.0.0.0", port=10000)
