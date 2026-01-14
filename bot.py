@@ -17,7 +17,7 @@ GITHUB_REPO = "muzredmaksimov-dot/radioplayer"
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 
 CHANNEL_ID = -1002905716039        # test111
-CHANNEL_URL = "https://t.me/test111"
+CHANNEL_URL = "@newredacktor_bot"
 
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
