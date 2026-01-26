@@ -93,7 +93,7 @@ def save_user(chat_id):
 
 # ================== ВСПОМОГАТЕЛЬНОЕ ==================
 def is_friday():
-    return datetime.datetime.now().weekday() == 4
+    return datetime.datetime.now().weekday() == 0
 
 def set_screen(chat_id, text, kb=None, parse="Markdown"):
     if chat_id in user_main_message:
@@ -264,7 +264,7 @@ def buffer_worker():
 def friday_notifier():
     while True:
         now = datetime.datetime.now()
-        if now.weekday() == 4 and now.hour == 9 and now.minute == 0:
+        if now.weekday() == 0 and now.hour == 15 and now.minute == 55:
             kb = types.InlineKeyboardMarkup()
             kb.add(types.InlineKeyboardButton("🚀 Играть", callback_data="play"))
             for chat_id in friday_reminders:
