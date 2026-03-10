@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Радио Мир - Приложение</title>
+    <title>🎙️ Радио Мир - Приложение</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 </head>
@@ -11,38 +11,108 @@
     <div class="app-container">
         <!-- HEADER -->
         <div class="header">
-            <h1>🎙️ Радио Мир</h1>
-            <button class="admin-btn" onclick="goToAdmin()">Admin</button>
+            <div class="logo">
+                <span class="logo-icon">🎙️</span>
+                <span class="logo-text">Радио Мир</span>
+            </div>
+            <button class="admin-btn" onclick="goToAdmin()" style="display: none;">⚙️</button>
         </div>
 
         <!-- MAIN CONTENT -->
         <div class="main-content">
-            <!-- PLAYER SECTION -->
-            <div class="player-section">
+            
+            <!-- LARGE PLAYER -->
+            <div class="player-wrapper">
                 <div class="player-card">
-                    <video id="videoPlayer" style="width: 100%; height: 300px; background: #000;"></video>
+                    <!-- Album Art / Visualization -->
+                    <div class="player-visualization">
+                        <video id="videoPlayer" style="display: none;"></video>
+                        <div class="visualizer">
+                            <div class="bar"></div>
+                            <div class="bar"></div>
+                            <div class="bar"></div>
+                            <div class="bar"></div>
+                            <div class="bar"></div>
+                            <div class="bar"></div>
+                            <div class="bar"></div>
+                            <div class="bar"></div>
+                        </div>
+                    </div>
+
+                    <!-- Station Info -->
+                    <div class="station-info">
+                        <h2 id="stationName">Радио Мир</h2>
+                        <p id="stationStatus">🔴 Онлайн</p>
+                    </div>
+
+                    <!-- Play Button (Large) -->
+                    <button id="playBtn" class="play-btn" onclick="togglePlay()">
+                        <span class="play-icon">▶</span>
+                    </button>
+
+                    <!-- Controls -->
                     <div class="player-controls">
-                        <button id="playBtn" class="control-btn" onclick="togglePlay()">▶️ Включить</button>
-                        <button class="control-btn" onclick="goFullscreen()">⛶ Полный экран</button>
+                        <button class="control-icon" onclick="goFullscreen()" title="Полный экран">⛶</button>
+                        <button class="control-icon" onclick="toggleVolume()" title="Звук">🔊</button>
                     </div>
-                    <div class="player-info">
-                        <p>🔴 <span id="status">Готово к трансляции</span></p>
+                </div>
+            </div>
+
+            <!-- STATIONS CAROUSEL -->
+            <div class="stations-section">
+                <h3>Другие радиостанции</h3>
+                <div class="carousel">
+                    <button class="carousel-btn prev" onclick="scrollCarousel(-1)">◀</button>
+                    <div class="stations-list">
+                        <div class="station-card active" onclick="selectStation(0)">
+                            <div class="station-card-img">🎙️</div>
+                            <div class="station-card-text">
+                                <p class="station-card-name">Радио Мир</p>
+                                <p class="station-card-status">Онлайн</p>
+                            </div>
+                        </div>
+                        <div class="station-card" onclick="selectStation(1)">
+                            <div class="station-card-img">🎵</div>
+                            <div class="station-card-text">
+                                <p class="station-card-name">Мир+</p>
+                                <p class="station-card-status">Популярное</p>
+                            </div>
+                        </div>
+                        <div class="station-card" onclick="selectStation(2)">
+                            <div class="station-card-img">🎶</div>
+                            <div class="station-card-text">
+                                <p class="station-card-name">Мир HD</p>
+                                <p class="station-card-status">Премиум</p>
+                            </div>
+                        </div>
                     </div>
+                    <button class="carousel-btn next" onclick="scrollCarousel(1)">▶</button>
                 </div>
             </div>
 
             <!-- NEWS SECTION -->
             <div class="news-section">
-                <h2>📰 Новинки</h2>
+                <h3>📰 Свежие новости</h3>
                 <div id="newsList" class="news-grid">
-                    <p style="text-align: center; padding: 20px;">Загрузка новостей...</p>
+                    <p style="text-align: center; padding: 40px 20px; color: #999;">Загрузка новостей...</p>
                 </div>
             </div>
         </div>
 
-        <!-- FOOTER -->
-        <div class="footer">
-            <p>© 2026 Радио Мир | Потоковая трансляция HLS</p>
+        <!-- BOTTOM NAV -->
+        <div class="bottom-nav">
+            <button class="nav-btn active" onclick="showSection('player')">
+                <span class="nav-icon">🎵</span>
+                <span class="nav-label">Плеер</span>
+            </button>
+            <button class="nav-btn" onclick="showSection('news')">
+                <span class="nav-icon">📰</span>
+                <span class="nav-label">Новости</span>
+            </button>
+            <button class="nav-btn" onclick="showSection('favorites')">
+                <span class="nav-icon">❤️</span>
+                <span class="nav-label">Избранное</span>
+            </button>
         </div>
     </div>
 
@@ -51,11 +121,11 @@
         <div class="admin-modal">
             <button class="close-btn" onclick="closeAdmin()">✕</button>
             
-            <h2>Админ Панель</h2>
+            <h2>⚙️ Админ Панель</h2>
             
             <!-- LOGIN -->
             <div id="adminLogin" class="admin-login">
-                <input type="password" id="adminPassword" placeholder="Введите пароль администратора" />
+                <input type="password" id="adminPassword" placeholder="Введите пароль" />
                 <button onclick="adminLogin()">Вход</button>
             </div>
 
