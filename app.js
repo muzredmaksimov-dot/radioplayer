@@ -1,7 +1,34 @@
+// Admin token check
+const ADMIN_TOKEN = 'your_secret_token_here';
+let isAdmin = false;
+
 // HLS Video Player
 let hls;
 let video = document.getElementById('videoPlayer');
 const HLS_URL = 'https://media1.datacenter.by:1936/radiomir/radiomir/playlist.m3u8';
+let isPlaying = false;
+
+// Проверка прав администратора при загрузке страницы
+async function checkAdminStatus() {
+    try {
+        const response = await fetch('/api/check-admin', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: ADMIN_TOKEN })
+        });
+        
+        if (response.ok) {
+            isAdmin = true;
+            document.querySelector('.admin-btn').style.display = 'block';
+        } else {
+            isAdmin = false;
+            document.querySelector('.admin-btn').style.display = 'none';
+        }
+    } catch (error) {
+        console.error('Ошибка проверки админа:', error);
+        document.querySelector('.admin-btn').style.display = 'none';
+    }
+}
 
 // Инициализация плеера
 function initPlayer() {
@@ -11,41 +38,41 @@ function initPlayer() {
         hls.attachMedia(video);
         
         hls.on(Hls.Events.MANIFEST_PARSED, function() {
-            updateStatus('Трансляция готова к воспроизведению');
+            console.log('HLS манифест загружен');
         });
         
         hls.on(Hls.Events.ERROR, function(event, data) {
             if (data.fatal) {
-                updateStatus('⚠️ Ошибка подключения. Проверьте интернет.');
+                console.error('Ошибка HLS:', data);
             }
         });
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
         video.src = HLS_URL;
-        updateStatus('Трансляция готова');
     }
 }
 
 function togglePlay() {
     const btn = document.getElementById('playBtn');
+    
     if (video.paused) {
         video.play();
-        btn.textContent = '⏸️ Пауза';
-        updateStatus('🔴 ПРЯМОЙ ЭФИР');
+        btn.classList.add('playing');
+        isPlaying = true;
     } else {
         video.pause();
-        btn.textContent = '▶️ Включить';
-        updateStatus('⏸️ Приостановлено');
+        btn.classList.remove('playing');
+        isPlaying = false;
     }
-}
-
-function updateStatus(msg) {
-    document.getElementById('status').textContent = msg;
 }
 
 function goFullscreen() {
     if (video.requestFullscreen) {
         video.requestFullscreen();
     }
+}
+
+function toggleVolume() {
+    video.muted = !video.muted;
 }
 
 // NEWS FUNCTIONS
@@ -56,7 +83,7 @@ async function loadNews() {
         displayNews(news);
     } catch (error) {
         console.error('Ошибка загрузки новостей:', error);
-        document.getElementById('newsList').innerHTML = '<p>Ошибка загрузки новостей</p>';
+        document.getElementById('newsList').innerHTML = '<p style="text-align: center; color: #999;">Ошибка загрузки новостей</p>';
     }
 }
 
@@ -64,7 +91,7 @@ function displayNews(news) {
     const newsList = document.getElementById('newsList');
     
     if (news.length === 0) {
-        newsList.innerHTML = '<p>Нет новостей</p>';
+        newsList.innerHTML = '<p style="text-align: center; color: #999; padding: 40px 20px;">Нет новостей</p>';
         return;
     }
     
@@ -90,6 +117,35 @@ async function likeNews(newsId) {
     } catch (error) {
         console.error('Ошибка при добавлении лайка:', error);
     }
+}
+
+// Navigation
+function showSection(section) {
+    document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+    event.target.closest('.nav-btn').classList.add('active');
+    
+    // Скролл к нужной секции
+    if (section === 'player') {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else if (section === 'news') {
+        document.querySelector('.news-section').scrollIntoView({ behavior: 'smooth' });
+    }
+}
+
+// Station selection
+function selectStation(index) {
+    document.querySelectorAll('.station-card').forEach((card, i) => {
+        if (i === index) {
+            card.classList.add('active');
+        } else {
+            card.classList.remove('active');
+        }
+    });
+}
+
+function scrollCarousel(direction) {
+    const list = document.querySelector('.stations-list');
+    list.scrollBy({ left: direction * 150, behavior: 'smooth' });
 }
 
 // ADMIN FUNCTIONS
@@ -148,7 +204,7 @@ async function addNews() {
             body: JSON.stringify({
                 title,
                 description,
-                image: image || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"%3E%3Crect fill="%23FF6B6B" width="400" height="300"/%3E%3C/svg%3E',
+                image: image || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"%3E%3Crect fill="%231e3a5f" width="400" height="300"/%3E%3C/svg%3E',
                 password: document.getElementById('adminPassword').value
             })
         });
@@ -179,10 +235,8 @@ async function loadAdminNews() {
         const list = document.getElementById('adminNewsList');
         list.innerHTML = news.map(item => `
             <div class="admin-news-item">
-                <div>
-                    <strong>${item.title}</strong>
-                    <p>${item.description}</p>
-                </div>
+                <strong>${item.title}</strong>
+                <p>${item.description}</p>
                 <div class="admin-actions">
                     <button class="btn-edit" onclick="editNews(${item.id}, '${item.title.replace(/'/g, "\\'")}', '${item.description.replace(/'/g, "\\'")}', '${item.image.replace(/'/g, "\\'")}')">✏️ Редактировать</button>
                     <button class="btn-delete" onclick="deleteNews(${item.id})">🗑️ Удалить</button>
@@ -254,6 +308,7 @@ async function deleteNews(id) {
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
+    checkAdminStatus();
     initPlayer();
     loadNews();
     setInterval(loadNews, 30000);
