@@ -1,118 +1,260 @@
-/* ===== TELEGRAM SAFE INIT ===== */
-let tg = null;
+// HLS Video Player
+let hls;
+let video = document.getElementById('videoPlayer');
+const HLS_URL = 'https://media1.datacenter.by:1936/radiomir/radiomir/playlist.m3u8';
 
-if (window.Telegram && window.Telegram.WebApp) {
-  tg = window.Telegram.WebApp;
-  tg.ready();
+// Инициализация плеера
+function initPlayer() {
+    if (Hls.isSupported()) {
+        hls = new Hls();
+        hls.loadSource(HLS_URL);
+        hls.attachMedia(video);
+        
+        hls.on(Hls.Events.MANIFEST_PARSED, function() {
+            updateStatus('Трансляция готова к воспроизведению');
+        });
+        
+        hls.on(Hls.Events.ERROR, function(event, data) {
+            if (data.fatal) {
+                updateStatus('⚠️ Ошибка подключения. Проверьте интернет.');
+            }
+        });
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = HLS_URL;
+        updateStatus('Трансляция готова');
+    }
 }
 
-/* ===== RADIO ===== */
-const radioStream = new Audio(
-  "https://media1.datacenter.by:1936/radiomir/radiomir/playlist.m3u8"
-);
-radioStream.crossOrigin = "anonymous";
-
-const playBtn = document.getElementById("playBtn");
-
-playBtn.onclick = () => {
-  if (radioStream.paused) {
-    radioStream.play();
-    playBtn.textContent = "⏸";
-  } else {
-    radioStream.pause();
-    playBtn.textContent = "▶️";
-  }
-};
-
-/* ===== ON AIR ===== */
-function getOnAir() {
-  const h = new Date().getHours();
-  if (h >= 7 && h < 11) return "Мировое утро";
-  if (h >= 11 && h < 12) return "Музыкальный нон-стоп";
-  if (h >= 12 && h < 16) return "Все просто с Катей Жаворонок";
-  if (h >= 16 && h < 20) return "Вечер без суеты с Женей Задорой";
-  return "Музыкальный нон-стоп";
+function togglePlay() {
+    const btn = document.getElementById('playBtn');
+    if (video.paused) {
+        video.play();
+        btn.textContent = '⏸️ Пауза';
+        updateStatus('🔴 ПРЯМОЙ ЭФИР');
+    } else {
+        video.pause();
+        btn.textContent = '▶️ Включить';
+        updateStatus('⏸️ Приостановлено');
+    }
 }
 
-document.getElementById("onAir").textContent = getOnAir();
-
-/* ===== VOTES CACHE ===== */
-let votesCache = [];
-
-fetch("data/votes.csv")
-  .then(r => r.ok ? r.text() : "")
-  .then(text => {
-    votesCache = text
-      .split("\n")
-      .slice(1)
-      .map(row => {
-        const [d,t,u,track] = row.split(",");
-        return { user:u, track };
-      });
-  });
-
-function hasVoted(userId, trackId) {
-  return votesCache.some(v => v.user == userId && v.track == trackId);
+function updateStatus(msg) {
+    document.getElementById('status').textContent = msg;
 }
 
-/* ===== PREVIEW PLAYER ===== */
-let preview = new Audio();
-
-function playPreview(url) {
-  preview.pause();
-  preview = new Audio(url);
-  preview.play();
+function goFullscreen() {
+    if (video.requestFullscreen) {
+        video.requestFullscreen();
+    }
 }
 
-/* ===== TRACKS ===== */
-fetch("data/tracks.json")
-  .then(r => r.json())
-  .then(tracks => {
-    const box = document.getElementById("tracks");
-    const user = tg?.initDataUnsafe?.user || null;
-
-    tracks.forEach(t => {
-      const voted = user ? hasVoted(user.id, t.id) : false;
-
-      const div = document.createElement("div");
-      div.className = "track";
-      div.innerHTML = `
-        <strong>${t.artist}</strong><br>
-        ${t.title}<br><br>
-
-        <button onclick="playPreview('${t.audio}')">▶️</button>
-
-        <button class="vote-btn ${voted ? 'disabled' : ''}"
-          onclick="vote(${t.id}, 'like', this)">👍</button>
-
-        <button class="vote-btn ${voted ? 'disabled' : ''}"
-          onclick="vote(${t.id}, 'dislike', this)">👎</button>
-
-        ${voted ? '<div class="vote-info">Вы уже голосовали</div>' : ''}
-      `;
-      box.appendChild(div);
-    });
-  });
-
-/* ===== VOTE ===== */
-function vote(trackId, type, btn) {
-  if (!tg || !tg.initDataUnsafe?.user) {
-    alert("Чтобы голосовать, откройте через Telegram");
-    return;
-  }
-
-  const user = tg.initDataUnsafe.user;
-
-  if (hasVoted(user.id, trackId)) return;
-
-  btn.parentElement.querySelectorAll(".vote-btn").forEach(b => {
-    b.classList.add("disabled");
-  });
-
-  btn.classList.add("selected");
-
-  const info = document.createElement("div");
-  info.className = "vote-info";
-  info.textContent = "Спасибо! Голос принят";
-  btn.parentElement.appendChild(info);
+// NEWS FUNCTIONS
+async function loadNews() {
+    try {
+        const response = await fetch('/api/news');
+        const news = await response.json();
+        displayNews(news);
+    } catch (error) {
+        console.error('Ошибка загрузки новостей:', error);
+        document.getElementById('newsList').innerHTML = '<p>Ошибка загрузки новостей</p>';
+    }
 }
+
+function displayNews(news) {
+    const newsList = document.getElementById('newsList');
+    
+    if (news.length === 0) {
+        newsList.innerHTML = '<p>Нет новостей</p>';
+        return;
+    }
+    
+    newsList.innerHTML = news.map(item => `
+        <div class="news-card">
+            <img src="${item.image}" alt="${item.title}" class="news-image">
+            <div class="news-content">
+                <h3>${item.title}</h3>
+                <p>${item.description}</p>
+                <div class="news-footer">
+                    <button class="like-btn" onclick="likeNews(${item.id})">👍 ${item.likes}</button>
+                    <span class="news-date">${new Date(item.created_at).toLocaleDateString('ru-RU')}</span>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function likeNews(newsId) {
+    try {
+        await fetch(`/api/news/${newsId}/like`, { method: 'POST' });
+        loadNews();
+    } catch (error) {
+        console.error('Ошибка при добавлении лайка:', error);
+    }
+}
+
+// ADMIN FUNCTIONS
+let adminAuthed = false;
+
+function goToAdmin() {
+    document.getElementById('adminPanel').classList.remove('hidden');
+    adminAuthed = false;
+    document.getElementById('adminLogin').classList.remove('hidden');
+    document.getElementById('adminInterface').classList.add('hidden');
+    loadAdminNews();
+}
+
+function closeAdmin() {
+    document.getElementById('adminPanel').classList.add('hidden');
+    adminAuthed = false;
+}
+
+function adminLogin() {
+    const password = document.getElementById('adminPassword').value;
+    
+    if (!password) {
+        alert('Введите пароль');
+        return;
+    }
+    
+    if (password === 'admin123') {
+        adminAuthed = true;
+        document.getElementById('adminLogin').classList.add('hidden');
+        document.getElementById('adminInterface').classList.remove('hidden');
+        loadAdminNews();
+    } else {
+        alert('❌ Неверный пароль');
+    }
+}
+
+async function addNews() {
+    if (!adminAuthed) {
+        alert('Вы не авторизованы');
+        return;
+    }
+    
+    const title = document.getElementById('newsTitle').value;
+    const description = document.getElementById('newsDesc').value;
+    const image = document.getElementById('newsImage').value;
+    
+    if (!title || !description) {
+        alert('Заполните все поля');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/news', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                title,
+                description,
+                image: image || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"%3E%3Crect fill="%23FF6B6B" width="400" height="300"/%3E%3C/svg%3E',
+                password: document.getElementById('adminPassword').value
+            })
+        });
+        
+        if (response.ok) {
+            alert('✅ Новость добавлена');
+            document.getElementById('newsTitle').value = '';
+            document.getElementById('newsDesc').value = '';
+            document.getElementById('newsImage').value = '';
+            loadNews();
+            loadAdminNews();
+        } else {
+            alert('❌ Ошибка добавления');
+        }
+    } catch (error) {
+        console.error('Ошибка:', error);
+        alert('Ошибка сервера');
+    }
+}
+
+async function loadAdminNews() {
+    if (!adminAuthed) return;
+    
+    try {
+        const response = await fetch('/api/news');
+        const news = await response.json();
+        
+        const list = document.getElementById('adminNewsList');
+        list.innerHTML = news.map(item => `
+            <div class="admin-news-item">
+                <div>
+                    <strong>${item.title}</strong>
+                    <p>${item.description}</p>
+                </div>
+                <div class="admin-actions">
+                    <button class="btn-edit" onclick="editNews(${item.id}, '${item.title.replace(/'/g, "\\'")}', '${item.description.replace(/'/g, "\\'")}', '${item.image.replace(/'/g, "\\'")}')">✏️ Редактировать</button>
+                    <button class="btn-delete" onclick="deleteNews(${item.id})">🗑️ Удалить</button>
+                </div>
+            </div>
+        `).join('');
+    } catch (error) {
+        console.error('Ошибка загрузки новостей админа:', error);
+    }
+}
+
+function editNews(id, title, description, image) {
+    const newTitle = prompt('Новый заголовок:', title);
+    if (newTitle === null) return;
+    
+    const newDesc = prompt('Новое описание:', description);
+    if (newDesc === null) return;
+    
+    const newImage = prompt('Новое изображение (URL):', image);
+    if (newImage === null) return;
+    
+    updateNews(id, newTitle, newDesc, newImage);
+}
+
+async function updateNews(id, title, description, image) {
+    try {
+        const response = await fetch(`/api/news/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                title,
+                description,
+                image,
+                password: document.getElementById('adminPassword').value
+            })
+        });
+        
+        if (response.ok) {
+            alert('✅ Новость обновлена');
+            loadNews();
+            loadAdminNews();
+        }
+    } catch (error) {
+        console.error('Ошибка обновления:', error);
+    }
+}
+
+async function deleteNews(id) {
+    if (!confirm('Вы уверены?')) return;
+    
+    try {
+        const response = await fetch(`/api/news/${id}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                password: document.getElementById('adminPassword').value
+            })
+        });
+        
+        if (response.ok) {
+            alert('✅ Новость удалена');
+            loadNews();
+            loadAdminNews();
+        }
+    } catch (error) {
+        console.error('Ошибка удаления:', error);
+    }
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    initPlayer();
+    loadNews();
+    setInterval(loadNews, 30000);
+});
