@@ -9,7 +9,8 @@ CORS(app)
 
 # Путь к файлу с новостями
 NEWS_FILE = 'news.json'
-ADMIN_PASSWORD = 'admin123'
+ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'admin123')
+ADMIN_TOKEN = os.environ.get('ADMIN_TOKEN', 'your_secret_token_here')
 
 # Инициализация файла новостей
 def init_news_file():
@@ -19,7 +20,7 @@ def init_news_file():
                 'id': 1,
                 'title': 'Добро пожаловать в Радио Мир',
                 'description': 'Новое приложение для прямой трансляции',
-                'image': 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"%3E%3Crect fill="%23FF6B6B" width="400" height="300"/%3E%3Ctext x="50%25" y="50%25" font-size="32" fill="white" text-anchor="middle" dominant-baseline="middle"%3EРадио Мир%3C/text%3E%3C/svg%3E',
+                'image': 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"%3E%3Crect fill="%231e3a5f" width="400" height="300"/%3E%3Ctext x="50%25" y="50%25" font-size="32" fill="white" text-anchor="middle" dominant-baseline="middle"%3EРадио Мир%3C/text%3E%3C/svg%3E',
                 'likes': 0,
                 'created_at': datetime.now().isoformat()
             }
@@ -32,6 +33,15 @@ init_news_file()
 @app.route('/')
 def index():
     return send_file('index.html')
+
+@app.route('/api/check-admin', methods=['POST'])
+def check_admin():
+    data = request.json
+    token = data.get('token')
+    
+    if token == ADMIN_TOKEN:
+        return jsonify({'admin': True}), 200
+    return jsonify({'admin': False}), 401
 
 @app.route('/api/news', methods=['GET'])
 def get_news():
